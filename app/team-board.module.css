@@ -332,3 +332,140 @@
     padding-right: 18px;
   }
 }
+
+
+/* Clickable task cards + task detail modal */
+.taskCard {
+  cursor: pointer;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+
+.taskCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 9px 24px #0006;
+}
+
+.taskCard:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+.detailModal {
+  width: min(760px, 96vw);
+}
+
+.detailBody {
+  padding: 22px 24px 24px;
+}
+
+.detailStatusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.detailPill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #111923;
+  color: #dce4ed;
+  padding: 6px 9px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.detailOverdue {
+  color: #ffadb2;
+  border-color: #742f34;
+  background: #281115;
+}
+
+.detailSection {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+.detailSection h3 {
+  margin: 0 0 8px;
+  color: #f2f5f8;
+  font-size: 13px;
+}
+
+.detailSection p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+.detailGrid section {
+  min-height: 70px;
+  padding: 11px;
+  border: 1px solid #202a36;
+  border-radius: 9px;
+  background: #0b1118;
+}
+
+.detailGrid strong {
+  display: block;
+  margin-top: 5px;
+  color: #f2f5f8;
+  font-size: 13px;
+}
+
+.detailLabel {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.memberChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.memberChips span {
+  display: inline-flex;
+  padding: 6px 9px;
+  border: 1px solid #23444a;
+  border-radius: 999px;
+  background: #0b252a;
+  color: #bdf7fb;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.detailActions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 700px) {
+  .detailGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 460px) {
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+}
