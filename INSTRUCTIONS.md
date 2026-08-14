@@ -1,29 +1,101 @@
-# Clickable Task Cards
+# Ultronic Build 2D — Real Weekly Capacity Planning
 
-This patch makes each Kanban task card clickable.
+This build implements the capacity model we agreed on:
 
-Copy into your real Workflow-Management-System repository and replace:
+- Task Estimate = total expected effort for the whole task
+- Weekly Capacity = how many hours a person can give the team that week
+- Planned Hours = how many hours that specific person plans to spend on that task that week
+- Remaining Capacity = Available - Planned
 
-- app/page.tsx
-- app/team-board.module.css
+This means a six-hour task can be planned like:
+- Natalie: 1 hr this week
+- Ben: 3 hrs this week
+- Colton: 2 hrs this week
 
-Commit message suggestion:
+and a multi-week task can be split across different weeks.
 
-`Make task cards clickable`
+## Step 1 — Run the SQL migration in Supabase
 
-After Vercel deploys, clicking any task card opens a Task Details modal showing:
-- project
-- category
-- status
-- priority
-- description
-- lead
-- point of contact
-- people needed / assigned
-- assignees
-- estimate
-- deadline
-- difficulty
+Open:
 
-This patch is read-only task detail. Editing, self-assignment, status changes, time logging,
-subtasks, and approval workflow can be added in the next task-management build.
+Supabase -> SQL Editor -> New Query
+
+Copy and run:
+
+`supabase/migrations/003_capacity_planning.sql`
+
+It creates:
+
+- `weekly_capacity`
+- `task_weekly_plans`
+
+The second table is tied to `task_assignments`, so someone can only plan hours
+against a task they are actually assigned to.
+
+Expected result at the bottom:
+- task_weekly_plans
+- weekly_capacity
+
+## Step 2 — Copy the code patch into your repository
+
+NEW:
+- `app/api/capacity/route.ts`
+- `app/capacity/capacity.module.css`
+
+REPLACE:
+- `app/capacity/page.tsx`
+- `app/page.tsx`
+
+The replacement `app/page.tsx` preserves the clickable task-card detail view
+and also makes the Team Board capacity summary use real weekly capacity data.
+
+## Step 3 — Commit and deploy
+
+Suggested GitHub Desktop commit:
+
+`Add real weekly capacity planning`
+
+Commit to main -> Push origin.
+
+Wait for Vercel to show Ready.
+
+## Step 4 — Test Capacity
+
+1. Select yourself under Working As.
+2. Open Capacity.
+3. The current week should default to Monday of the current week.
+4. Click `Update My Capacity`.
+5. Enter how many hours you can give the team this week.
+6. For each task assigned to you, enter your planned hours for this week.
+7. Save.
+
+The team table will calculate:
+- Available
+- Planned
+- Remaining
+- Unplanned assigned tasks
+- Workload percentage
+- Who is over capacity
+
+Use the arrows next to the week to plan another week.
+
+## Important behavior
+
+If an assigned task has no planned hours for the selected week, it is counted
+as `Unplanned` instead of silently disappearing from workload.
+
+If an assigned task has no total task estimate, the page also flags it as
+`Unestimated`.
+
+This is intentional so the capacity dashboard never looks artificially empty
+just because planning data is missing.
+
+## Team Board
+
+The Team Board capacity card now uses the current week's real totals:
+- Available
+- Planned
+- Remaining
+- Count over capacity when applicable
+
+No new Vercel environment variables are needed.
