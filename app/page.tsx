@@ -1,129 +1,357 @@
 "use client";
 
-import { useState } from "react";
-import { Metric, TaskCard, type TaskCardProps } from "@/components/ui";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { Metric } from "@/components/ui";
 import { useCurrentUser } from "@/components/current-user-provider";
+import styles from "./team-board.module.css";
 
-type BoardColumn = {
-  name: string;
-  cards: TaskCardProps[];
+type TaskStatus =
+  | "backlog"
+  | "needs_assignment"
+  | "assigned"
+  | "in_progress"
+  | "blocked"
+  | "ready_for_review"
+  | "completed";
+
+type Task = {
+  id: string;
+  project_id: string;
+  project_name: string;
+  project_division: "technical" | "operational" | "both";
+  category_id: string;
+  category_name: string;
+  category_division: "technical" | "operational";
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: "low" | "normal" | "high" | "critical";
+  difficulty: number | null;
+  people_needed: number;
+  estimated_minutes: number | null;
+  deadline: string | null;
+  lead_member_id: string | null;
+  lead_name: string | null;
+  poc_member_id: string | null;
+  poc_name: string | null;
+  assignee_ids: string[];
+  assignee_names: string[];
+  assigned_count: number;
 };
 
-const columns: BoardColumn[] = [
-  {
-    name: "Backlog",
-    cards: [
-      {
-        title: "Scouting heat-map idea",
-        category: "Strategy + Business",
-        project: "Scouting",
-        tone: "operational",
-        lead: "Natalie",
-        estimate: "2 hrs",
-      },
-      {
-        title: "Prototype alternate roller",
-        category: "Design",
-        project: "Intake",
-        tone: "technical",
-        lead: "Sophie",
-        estimate: "3 hrs",
-      },
-    ],
-  },
-  {
-    name: "Needs Assignment",
-    cards: [
-      {
-        title: "Prepare STEM Tent",
-        category: "Community Outreach",
-        project: "STEM Tent",
-        tone: "operational",
-        people: "1 / 3",
-        estimate: "2 hrs",
-        due: "Aug 16",
-        badge: "2 PEOPLE NEEDED",
-      },
-    ],
-  },
-  {
-    name: "Assigned",
-    cards: [
-      {
-        title: "Auto path tuning",
-        category: "Programming",
-        project: "Autonomous",
-        tone: "technical",
-        lead: "Ben",
-        people: "2 / 2",
-        estimate: "4 hrs",
-        due: "Aug 15",
-      },
-    ],
-  },
-  {
-    name: "In Progress",
-    cards: [
-      {
-        title: "Redesign Intake Rollers",
-        category: "Design",
-        project: "Intake",
-        tone: "technical",
-        lead: "Natalie",
-        people: "2 / 3",
-        estimate: "2 hrs",
-        due: "Aug 17",
-        badge: "1 PERSON NEEDED",
-      },
-      {
-        title: "Portfolio structure",
-        category: "Strategy + Business",
-        project: "Portfolio",
-        tone: "operational",
-        lead: "Sophie",
-        people: "2 / 2",
-        estimate: "3 hrs",
-        due: "Aug 18",
-      },
-    ],
-  },
-  {
-    name: "Blocked",
-    cards: [
-      {
-        title: "Test intake compression",
-        category: "Build",
-        project: "Intake",
-        tone: "technical",
-        lead: "Michael",
-        people: "2 / 2",
-        estimate: "2 hrs",
-        due: "Aug 14",
-        badge: "BLOCKED",
-      },
-    ],
-  },
-  {
-    name: "Ready for Review",
-    cards: [
-      {
-        title: "Sponsor follow-up template",
-        category: "Professional Outreach",
-        project: "Fundraising",
-        tone: "operational",
-        lead: "Natalie",
-        people: "1 / 1",
-        estimate: "1 hr",
-        due: "Aug 13",
-        badge: "REVIEW",
-      },
-    ],
-  },
+type ProjectOption = {
+  id: string;
+  name: string;
+  division: "technical" | "operational" | "both";
+  status: string;
+};
+
+type CategoryOption = {
+  id: string;
+  name: string;
+  division: "technical" | "operational";
+  sort_order: number;
+};
+
+const boardColumns: { status: TaskStatus; label: string }[] = [
+  { status: "backlog", label: "Backlog" },
+  { status: "needs_assignment", label: "Needs Assignment" },
+  { status: "assigned", label: "Assigned" },
+  { status: "in_progress", label: "In Progress" },
+  { status: "blocked", label: "Blocked" },
+  { status: "ready_for_review", label: "Ready for Review" },
+  { status: "completed", label: "Completed" },
 ];
 
+function formatDeadline(value: string | null) {
+  if (!value) {
+    return "No deadline";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
+function formatEstimate(minutes: number | null) {
+  if (minutes == null) {
+    return "No estimate";
+  }
+
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = minutes / 60;
+  return Number.isInteger(hours) ? `${hours} hr${hours === 1 ? "" : "s"}` : `${hours.toFixed(1)} hrs`;
+}
+
+function isOverdue(task: Task) {
+  if (!task.deadline || task.status === "completed") {
+    return false;
+  }
+
+  return new Date(task.deadline).getTime() < Date.now();
+}
+
+function titleCase(value: string) {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export default function TeamBoardPage() {
-  const { currentUser, hydrated } = useCurrentUser();
+  const { currentUser, teamMembers, hydrated } = useCurrentUser();
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [personFilter, setPersonFilter] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [deadlineFilter, setDeadlineFilter] = useState("");
   const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [needsPeopleOnly, setNeedsPeopleOnly] = useState(false);
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [blockedOnly, setBlockedOnly] = useState(false);
+
+  const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [priority, setPriority] = useState<
+    "low" | "normal" | "high" | "critical"
+  >("normal");
+  const [difficulty, setDifficulty] = useState("");
+  const [peopleNeeded, setPeopleNeeded] = useState("1");
+  const [estimatedMinutes, setEstimatedMinutes] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [leadMemberId, setLeadMemberId] = useState("");
+  const [pocMemberId, setPocMemberId] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+
+  const loadBoard = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+
+    try {
+      const response = await fetch("/api/tasks", { cache: "no-store" });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to load team board.");
+      }
+
+      setTasks(Array.isArray(payload.tasks) ? payload.tasks : []);
+      setProjects(Array.isArray(payload.projects) ? payload.projects : []);
+      setCategories(Array.isArray(payload.categories) ? payload.categories : []);
+    } catch (error) {
+      setLoadError(
+        error instanceof Error ? error.message : "Unable to load team board."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBoard();
+  }, [loadBoard]);
+
+  useEffect(() => {
+    function handleNewTask() {
+      openNewTask();
+    }
+
+    window.addEventListener("ultronic:new-task", handleNewTask);
+
+    return () => {
+      window.removeEventListener("ultronic:new-task", handleNewTask);
+    };
+  });
+
+  function openNewTask(defaultStatus?: TaskStatus) {
+    setTitle("");
+    setDescription("");
+    setProjectId("");
+    setCategoryId("");
+    setPriority("normal");
+    setDifficulty("");
+    setPeopleNeeded("1");
+    setEstimatedMinutes("");
+    setDeadline("");
+    setLeadMemberId(currentUser?.id ?? "");
+    setPocMemberId(currentUser?.id ?? "");
+    setAssigneeIds(currentUser?.id ? [currentUser.id] : []);
+    setFormError("");
+    setShowModal(true);
+  }
+
+  function toggleAssignee(memberId: string) {
+    setAssigneeIds((current) =>
+      current.includes(memberId)
+        ? current.filter((id) => id !== memberId)
+        : [...current, memberId]
+    );
+  }
+
+  async function submitTask(event: FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    setFormError("");
+
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description,
+          project_id: projectId,
+          category_id: categoryId,
+          priority,
+          difficulty: difficulty ? Number(difficulty) : null,
+          people_needed: Number(peopleNeeded),
+          estimated_minutes: estimatedMinutes
+            ? Number(estimatedMinutes)
+            : null,
+          deadline: deadline
+            ? new Date(`${deadline}T23:59:00`).toISOString()
+            : null,
+          lead_member_id: leadMemberId || null,
+          poc_member_id: pocMemberId || null,
+          assignee_ids: assigneeIds,
+          created_by_member_id: currentUser?.id ?? null,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to create task.");
+      }
+
+      setShowModal(false);
+      await loadBoard();
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : "Unable to create task."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (categoryFilter && task.category_id !== categoryFilter) return false;
+      if (projectFilter && task.project_id !== projectFilter) return false;
+      if (priorityFilter && task.priority !== priorityFilter) return false;
+
+      if (
+        personFilter &&
+        task.lead_member_id !== personFilter &&
+        !task.assignee_ids.includes(personFilter)
+      ) {
+        return false;
+      }
+
+      if (
+        myTasksOnly &&
+        currentUser &&
+        task.lead_member_id !== currentUser.id &&
+        !task.assignee_ids.includes(currentUser.id)
+      ) {
+        return false;
+      }
+
+      if (needsPeopleOnly && task.assigned_count >= task.people_needed) {
+        return false;
+      }
+
+      if (overdueOnly && !isOverdue(task)) return false;
+      if (blockedOnly && task.status !== "blocked") return false;
+
+      if (deadlineFilter === "overdue" && !isOverdue(task)) return false;
+      if (deadlineFilter === "none" && task.deadline) return false;
+
+      if (deadlineFilter === "7days") {
+        if (!task.deadline) return false;
+        const due = new Date(task.deadline).getTime();
+        const now = Date.now();
+        const sevenDays = now + 7 * 24 * 60 * 60 * 1000;
+        if (due < now || due > sevenDays) return false;
+      }
+
+      return true;
+    });
+  }, [
+    tasks,
+    categoryFilter,
+    projectFilter,
+    personFilter,
+    priorityFilter,
+    deadlineFilter,
+    myTasksOnly,
+    needsPeopleOnly,
+    overdueOnly,
+    blockedOnly,
+    currentUser,
+  ]);
+
+  const metrics = useMemo(() => {
+    return {
+      overdue: tasks.filter(isOverdue).length,
+      blocked: tasks.filter((task) => task.status === "blocked").length,
+      needPeople: tasks.filter(
+        (task) =>
+          task.status !== "completed" &&
+          task.assigned_count < task.people_needed
+      ).length,
+      review: tasks.filter(
+        (task) => task.status === "ready_for_review"
+      ).length,
+    };
+  }, [tasks]);
+
+  const hasFilters =
+    Boolean(categoryFilter) ||
+    Boolean(projectFilter) ||
+    Boolean(personFilter) ||
+    Boolean(priorityFilter) ||
+    Boolean(deadlineFilter) ||
+    myTasksOnly ||
+    needsPeopleOnly ||
+    overdueOnly ||
+    blockedOnly;
+
+  function clearFilters() {
+    setCategoryFilter("");
+    setProjectFilter("");
+    setPersonFilter("");
+    setPriorityFilter("");
+    setDeadlineFilter("");
+    setMyTasksOnly(false);
+    setNeedsPeopleOnly(false);
+    setOverdueOnly(false);
+    setBlockedOnly(false);
+  }
 
   return (
     <>
@@ -133,87 +361,524 @@ export default function TeamBoardPage() {
           <h1>Team Board</h1>
           <p>Everything the team is working on, in one place.</p>
         </div>
-        <button className="primary-button">+ New Task</button>
+        <button className="primary-button" onClick={() => openNewTask()}>
+          + New Task
+        </button>
       </div>
 
       {hydrated && !currentUser && (
         <div className="identity-prompt">
           <strong>Choose your name above.</strong>
           <span>
-            That tells the app who you are for My Tasks, time logs, comments,
-            capacity, and task assignments.
+            My Tasks includes anything you lead or are assigned to.
           </span>
         </div>
       )}
 
       <section className="metrics-grid">
-        <Metric value="3" label="Overdue" tone="red" />
-        <Metric value="4" label="Blocked" tone="red" />
-        <Metric value="7" label="Need People" tone="yellow" />
-        <Metric value="8" label="Need Review" tone="cyan" />
+        <Metric value={metrics.overdue} label="Overdue" tone="red" />
+        <Metric value={metrics.blocked} label="Blocked" tone="red" />
+        <Metric value={metrics.needPeople} label="Need People" tone="yellow" />
+        <Metric value={metrics.review} label="Need Review" tone="cyan" />
         <div className="capacity-card">
           <div>
             <small>TEAM CAPACITY · THIS WEEK</small>
-            <strong>42 hrs</strong>
-            <span>available</span>
+            <strong>—</strong>
+            <span>not configured yet</span>
           </div>
           <div>
-            <strong>31 hrs</strong>
+            <strong>—</strong>
             <span>committed</span>
           </div>
           <div>
-            <strong>11 hrs</strong>
-            <span>remaining</span>
+            <strong>Next</strong>
+            <span>capacity build</span>
           </div>
         </div>
       </section>
 
       <section className="filterbar">
-        <button>Category ▾</button>
-        <button>Project ▾</button>
-        <button>Person ▾</button>
-        <button>Priority ▾</button>
-        <button>Deadline ▾</button>
+        <select
+          className={styles.filterSelect}
+          value={categoryFilter}
+          onChange={(event) => setCategoryFilter(event.target.value)}
+        >
+          <option value="">All Categories</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className={styles.filterSelect}
+          value={projectFilter}
+          onChange={(event) => setProjectFilter(event.target.value)}
+        >
+          <option value="">All Projects</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className={styles.filterSelect}
+          value={personFilter}
+          onChange={(event) => setPersonFilter(event.target.value)}
+        >
+          <option value="">All People</option>
+          {teamMembers.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className={styles.filterSelect}
+          value={priorityFilter}
+          onChange={(event) => setPriorityFilter(event.target.value)}
+        >
+          <option value="">All Priorities</option>
+          <option value="low">Low</option>
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+
+        <select
+          className={styles.filterSelect}
+          value={deadlineFilter}
+          onChange={(event) => setDeadlineFilter(event.target.value)}
+        >
+          <option value="">All Deadlines</option>
+          <option value="7days">Due in 7 days</option>
+          <option value="overdue">Overdue</option>
+          <option value="none">No deadline</option>
+        </select>
+
         <button
           className={myTasksOnly ? "active-filter" : undefined}
           disabled={!currentUser}
-          title={!currentUser ? "Select yourself first" : undefined}
           onClick={() => setMyTasksOnly((current) => !current)}
         >
           My Tasks
         </button>
-        <button>Needs People</button>
-        <button>Overdue</button>
-        <button>Blocked</button>
+
+        <button
+          className={needsPeopleOnly ? "active-filter" : undefined}
+          onClick={() => setNeedsPeopleOnly((current) => !current)}
+        >
+          Needs People
+        </button>
+
+        <button
+          className={overdueOnly ? "active-filter" : undefined}
+          onClick={() => setOverdueOnly((current) => !current)}
+        >
+          Overdue
+        </button>
+
+        <button
+          className={blockedOnly ? "active-filter" : undefined}
+          onClick={() => setBlockedOnly((current) => !current)}
+        >
+          Blocked
+        </button>
+
+        {hasFilters && (
+          <button className={styles.clearFilters} onClick={clearFilters}>
+            Clear
+          </button>
+        )}
       </section>
 
-      <section className="kanban">
-        {columns.map((column) => {
-          const cards =
-            myTasksOnly && currentUser
-              ? column.cards.filter((card) => card.lead === currentUser.name)
-              : column.cards;
+      {loading && <div className={styles.loading}>Loading real team tasks…</div>}
 
-          return (
-            <div className="kanban-column" key={column.name}>
-              <div className="column-title">
-                <h2>{column.name}</h2>
-                <span>{cards.length}</span>
+      {!loading && loadError && (
+        <div className={styles.error}>
+          <strong>The Team Board could not be loaded.</strong>
+          <div>{loadError}</div>
+        </div>
+      )}
+
+      {!loading && !loadError && tasks.length === 0 && (
+        <div className={styles.emptyBoard}>
+          There are no tasks yet. Click <strong>+ New Task</strong> to create
+          the first one.
+        </div>
+      )}
+
+      {!loading && !loadError && (
+        <section
+          className="kanban"
+          style={{
+            gridTemplateColumns: "repeat(7, minmax(235px, 1fr))",
+          }}
+        >
+          {boardColumns.map((column) => {
+            const columnTasks = filteredTasks.filter(
+              (task) => task.status === column.status
+            );
+
+            return (
+              <div className="kanban-column" key={column.status}>
+                <div className="column-title">
+                  <h2>{column.label}</h2>
+                  <span>{columnTasks.length}</span>
+                </div>
+
+                {columnTasks.map((task) => {
+                  const overdue = isOverdue(task);
+                  const peopleShort = Math.max(
+                    0,
+                    task.people_needed - task.assigned_count
+                  );
+                  const operational =
+                    task.category_division === "operational";
+
+                  return (
+                    <article
+                      className={`${styles.taskCard} ${
+                        operational ? styles.operational : ""
+                      }`}
+                      key={task.id}
+                      title={task.description ?? undefined}
+                    >
+                      <div className={styles.taskLabel}>
+                        {task.category_name} · {task.project_name}
+                      </div>
+
+                      <h3 className={styles.taskTitle}>{task.title}</h3>
+
+                      <div className={styles.taskMeta}>
+                        <span>Lead: {task.lead_name ?? "Unassigned"}</span>
+                        <span>
+                          👥 {task.assigned_count} / {task.people_needed}
+                        </span>
+                      </div>
+
+                      <div className={styles.taskFooter}>
+                        <span>{formatEstimate(task.estimated_minutes)}</span>
+                        <span>{formatDeadline(task.deadline)}</span>
+                      </div>
+
+                      <div className={styles.badges}>
+                        {overdue && (
+                          <span className={`${styles.badge} ${styles.overdue}`}>
+                            OVERDUE
+                          </span>
+                        )}
+
+                        {task.status === "blocked" && (
+                          <span className={`${styles.badge} ${styles.blocked}`}>
+                            BLOCKED
+                          </span>
+                        )}
+
+                        {task.status === "ready_for_review" && (
+                          <span className={`${styles.badge} ${styles.review}`}>
+                            REVIEW
+                          </span>
+                        )}
+
+                        {peopleShort > 0 && task.status !== "completed" && (
+                          <span className={styles.badge}>
+                            {peopleShort} PERSON{peopleShort === 1 ? "" : "S"} NEEDED
+                          </span>
+                        )}
+
+                        {task.priority === "critical" && (
+                          <span className={`${styles.badge} ${styles.critical}`}>
+                            CRITICAL
+                          </span>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
+
+                {columnTasks.length === 0 && (
+                  <p className="empty-column">No matching tasks.</p>
+                )}
+
+                {column.status !== "completed" && (
+                  <button className="add-task" onClick={() => openNewTask()}>
+                    + Add task
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {showModal && (
+        <div
+          className={styles.overlay}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target && !submitting) {
+              setShowModal(false);
+            }
+          }}
+        >
+          <section
+            className={styles.modal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-task-title"
+          >
+            <div className={styles.modalHeader}>
+              <div>
+                <p className="eyebrow">NEW WORK</p>
+                <h2 id="new-task-title">Create Task</h2>
+              </div>
+              <button
+                className={styles.close}
+                onClick={() => setShowModal(false)}
+                disabled={submitting}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <form className={styles.form} onSubmit={submitTask}>
+              <label>
+                Task Name
+                <input
+                  required
+                  minLength={2}
+                  maxLength={160}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="e.g. Contact Gene Griffin to confirm demo date"
+                />
+              </label>
+
+              <div className={styles.twoCol}>
+                <label>
+                  Project
+                  <select
+                    required
+                    value={projectId}
+                    onChange={(event) => setProjectId(event.target.value)}
+                  >
+                    <option value="">Select project</option>
+                    {projects
+                      .filter((project) => project.status !== "completed")
+                      .map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+
+                <label>
+                  Category
+                  <select
+                    required
+                    value={categoryId}
+                    onChange={(event) => setCategoryId(event.target.value)}
+                  >
+                    <option value="">Select category</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
-              {cards.map((card) => (
-                <TaskCard key={card.title} {...card} />
-              ))}
+              <label className={styles.full}>
+                Description
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="What specifically needs to be accomplished?"
+                />
+              </label>
 
-              {cards.length === 0 && (
-                <p className="empty-column">No matching tasks.</p>
+              <div className={styles.fourCol}>
+                <label>
+                  Priority
+                  <select
+                    value={priority}
+                    onChange={(event) =>
+                      setPriority(
+                        event.target.value as
+                          | "low"
+                          | "normal"
+                          | "high"
+                          | "critical"
+                      )
+                    }
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </label>
+
+                <label>
+                  Difficulty
+                  <select
+                    value={difficulty}
+                    onChange={(event) => setDifficulty(event.target.value)}
+                  >
+                    <option value="">Not set</option>
+                    <option value="1">1 · Very Easy</option>
+                    <option value="2">2 · Easy</option>
+                    <option value="3">3 · Moderate</option>
+                    <option value="4">4 · Difficult</option>
+                    <option value="5">5 · Advanced</option>
+                  </select>
+                </label>
+
+                <label>
+                  People Needed
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    required
+                    value={peopleNeeded}
+                    onChange={(event) => setPeopleNeeded(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Estimate
+                  <select
+                    value={estimatedMinutes}
+                    onChange={(event) => setEstimatedMinutes(event.target.value)}
+                  >
+                    <option value="">Not set</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="120">2 hours</option>
+                    <option value="180">3 hours</option>
+                    <option value="240">4 hours</option>
+                    <option value="360">6 hours</option>
+                    <option value="480">8 hours</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className={styles.twoCol}>
+                <label>
+                  Deadline
+                  <input
+                    type="date"
+                    value={deadline}
+                    onChange={(event) => setDeadline(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Task Lead
+                  <select
+                    value={leadMemberId}
+                    onChange={(event) => {
+                      const nextLead = event.target.value;
+                      setLeadMemberId(nextLead);
+                      if (
+                        nextLead &&
+                        !assigneeIds.includes(nextLead)
+                      ) {
+                        setAssigneeIds((current) => [...current, nextLead]);
+                      }
+                    }}
+                  >
+                    <option value="">Unassigned</option>
+                    {teamMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name} · {titleCase(member.role)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className={styles.twoCol}>
+                <label>
+                  Point of Contact
+                  <select
+                    value={pocMemberId}
+                    onChange={(event) => setPocMemberId(event.target.value)}
+                  >
+                    <option value="">None</option>
+                    {teamMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Created By
+                  <input
+                    value={currentUser?.name ?? "Select yourself above"}
+                    disabled
+                  />
+                </label>
+              </div>
+
+              <fieldset className={styles.assignees}>
+                <legend>Assigned Team Members</legend>
+                <p className={styles.help}>
+                  The Task Lead is automatically included. Select additional
+                  people now, or leave open spots so students can self-assign
+                  later.
+                </p>
+                <div className={styles.assigneeGrid}>
+                  {teamMembers.map((member) => (
+                    <label key={member.id}>
+                      <input
+                        type="checkbox"
+                        checked={assigneeIds.includes(member.id)}
+                        onChange={() => toggleAssignee(member.id)}
+                      />
+                      {member.name}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              {formError && (
+                <p className={styles.formMessage}>{formError}</p>
               )}
 
-              <button className="add-task">+ Add task</button>
-            </div>
-          );
-        })}
-      </section>
+              <div className={styles.actions}>
+                <button
+                  className={styles.secondary}
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setShowModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className={styles.submit}
+                  type="submit"
+                  disabled={submitting}
+                >
+                  {submitting ? "Creating…" : "Create Task"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </>
   );
 }

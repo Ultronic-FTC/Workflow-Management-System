@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ProfileSwitcher } from "@/components/profile-switcher";
 
 const nav = [
@@ -14,6 +14,19 @@ const nav = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  function openNewTask() {
+    if (pathname !== "/") {
+      router.push("/");
+      window.setTimeout(() => {
+        window.dispatchEvent(new Event("ultronic:new-task"));
+      }, 150);
+      return;
+    }
+
+    window.dispatchEvent(new Event("ultronic:new-task"));
+  }
 
   if (pathname === "/access") {
     return <main className="access-page">{children}</main>;
@@ -39,12 +52,18 @@ export function AppShell({ children }: { children: ReactNode }) {
         <ProfileSwitcher />
 
         <form action="/api/access/signout" method="post">
-          <button className="ghost-button compact-button" type="submit" title="Lock team app">
+          <button
+            className="ghost-button compact-button"
+            type="submit"
+            title="Lock team app"
+          >
             Lock
           </button>
         </form>
 
-        <button className="primary-button">+ New Task</button>
+        <button className="primary-button" type="button" onClick={openNewTask}>
+          + New Task
+        </button>
       </header>
 
       <nav className="nav-tabs">
