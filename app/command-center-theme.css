@@ -251,3 +251,204 @@ body {
     padding: 9px 10px;
   }
 }
+
+
+/* ============================================================
+   NEXT COMPETITION ANNOUNCEMENT
+   ============================================================ */
+
+.command-center-nav {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.command-center-nav-links {
+  display: flex;
+  align-items: stretch;
+  gap: 36px;
+}
+
+.competition-announcement {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 24px;
+  font-family:
+    "SFMono-Regular",
+    "Cascadia Mono",
+    "Roboto Mono",
+    Consolas,
+    monospace;
+  white-space: nowrap;
+}
+
+.competition-label {
+  color: var(--command-red);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .16em;
+}
+
+.competition-announcement strong {
+  color: #f2f4f7;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .035em;
+}
+
+.competition-divider {
+  color: #5f6875;
+}
+
+.competition-countdown {
+  color: #aab3be;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .10em;
+}
+
+.competition-loading {
+  color: #687483;
+  font-size: 9px;
+}
+
+.competition-edit {
+  margin-left: 2px;
+  border: 1px solid #443138;
+  border-radius: 5px;
+  background: rgba(243, 19, 47, .055);
+  color: #c86f79;
+  padding: 4px 7px;
+  font-family: inherit;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .10em;
+  cursor: pointer;
+}
+
+.competition-edit:hover {
+  color: #fff;
+  border-color: var(--command-red);
+  background: rgba(243, 19, 47, .14);
+}
+
+/* Competition date editor */
+.competition-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 6, 10, .80);
+  backdrop-filter: blur(8px);
+}
+
+.competition-editor {
+  width: min(440px, 96vw);
+  border: 1px solid #323b48;
+  border-top: 3px solid var(--command-red);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(41, 12, 17, .18), transparent 38%),
+    #101720;
+  padding: 22px;
+  box-shadow: 0 30px 100px rgba(0,0,0,.62);
+}
+
+.competition-editor-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--command-red);
+  font-family:
+    "SFMono-Regular",
+    "Cascadia Mono",
+    "Roboto Mono",
+    Consolas,
+    monospace;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .18em;
+}
+
+.competition-editor h2 {
+  margin: 0;
+  color: #f3f5f7;
+  font-size: 24px;
+}
+
+.competition-editor p {
+  margin: 7px 0 18px;
+  color: #98a4b3;
+  font-size: 12px;
+}
+
+.competition-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #dfe4ea;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.competition-editor input {
+  border: 1px solid #35404d;
+  border-radius: 8px;
+  background: #080e14;
+  color: #f4f6f8;
+  padding: 11px;
+  font: inherit;
+}
+
+.competition-editor input:focus {
+  outline: none;
+  border-color: var(--command-red);
+}
+
+.competition-editor-error {
+  margin-top: 12px;
+  border: 1px solid #6c2d34;
+  border-radius: 7px;
+  background: #271216;
+  color: #ff9ba2;
+  padding: 9px 10px;
+  font-size: 11px;
+}
+
+.competition-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+/* Preserve the nav on narrower laptop screens before collapsing the notice. */
+@media (max-width: 1120px) {
+  .competition-label {
+    display: none;
+  }
+
+  .competition-announcement {
+    padding-left: 12px;
+  }
+}
+
+@media (max-width: 900px) {
+  .competition-countdown,
+  .competition-divider {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .command-center-nav-links {
+    gap: 20px;
+  }
+
+  .competition-announcement {
+    display: none;
+  }
+}
