@@ -523,9 +523,7 @@ body {
  * Remove the redundant Team Board title-row button without changing its
  * underlying event behavior.
  */
-.page-title-row > .primary-button {
-  display: none;
-}
+
 
 /* Give the real Ultronic robot-head mark a little more presence. */
 .command-center-logo-wrap {
