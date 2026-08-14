@@ -452,3 +452,142 @@ body {
     display: none;
   }
 }
+
+
+/* ============================================================
+   BUILD 2I — FINAL UI POLISH
+   ============================================================ */
+
+/*
+ * Keep horizontal scrolling inside the Kanban board instead of allowing
+ * the whole application shell/header to become wider than the viewport.
+ */
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.command-center-shell,
+.command-center-topbar,
+.command-center-nav,
+.page {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.command-center-topbar {
+  width: 100%;
+}
+
+.command-center-brand {
+  min-width: 250px;
+  flex: 0 0 250px;
+}
+
+.command-center-search {
+  min-width: 150px;
+  max-width: none;
+  flex: 1 1 360px;
+}
+
+.command-center-topbar .profile-switcher {
+  min-width: 175px;
+  flex: 0 1 205px;
+}
+
+.command-center-topbar form,
+.command-center-new-task {
+  flex: 0 0 auto;
+}
+
+.page {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* The Kanban is the element that is allowed to scroll horizontally. */
+.kanban {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * The Command Center header already owns the global New Task action.
+ * Remove the redundant Team Board title-row button without changing its
+ * underlying event behavior.
+ */
+.page-title-row > .primary-button {
+  display: none;
+}
+
+/* Give the real Ultronic robot-head mark a little more presence. */
+.command-center-logo-wrap {
+  width: 58px;
+  height: 58px;
+  flex-basis: 58px;
+}
+
+.command-center-topbar {
+  height: 90px;
+}
+
+/* Make the next-competition readout easier to scan without overpowering nav. */
+.competition-announcement {
+  gap: 10px;
+  padding-left: 22px;
+}
+
+.competition-label {
+  font-size: 10px;
+}
+
+.competition-announcement strong {
+  font-size: 13px;
+  letter-spacing: .04em;
+}
+
+.competition-countdown {
+  font-size: 10px;
+  letter-spacing: .11em;
+}
+
+.competition-edit {
+  padding: 5px 8px;
+  font-size: 8.5px;
+}
+
+/* Tighten gracefully on smaller laptops before the existing mobile rules. */
+@media (max-width: 1250px) {
+  .command-center-brand {
+    min-width: 225px;
+    flex-basis: 225px;
+  }
+
+  .command-center-search {
+    flex-basis: 260px;
+  }
+
+  .command-center-topbar .profile-switcher {
+    min-width: 160px;
+    flex-basis: 180px;
+  }
+}
+
+@media (max-width: 1050px) {
+  .command-center-logo-wrap {
+    width: 50px;
+    height: 50px;
+    flex-basis: 50px;
+  }
+
+  .command-center-topbar {
+    height: 82px;
+  }
+}
