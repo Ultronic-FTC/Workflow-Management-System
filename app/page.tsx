@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Metric, TaskCard } from "@/components/ui";
+import { Metric, TaskCard, type TaskCardProps } from "@/components/ui";
 import { useCurrentUser } from "@/components/current-user-provider";
 
-const columns = [
+type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst columns: BoardColumn[] = [
   {
     name: "Backlog",
     cards: [
