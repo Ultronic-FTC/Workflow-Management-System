@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { hasTeamAccess } from "@/lib/team-access-server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  discordColors,
+  formatDiscordDeadline,
+  sendDiscordNotification,
+} from "@/lib/notifications/discord";
 
 export const dynamic = "force-dynamic";
 
@@ -332,6 +337,90 @@ export async function POST(request: Request) {
         );
       }
     }
+
+    const memberIdsForNotification = Array.from(
+      new Set(
+        [leadMemberId, createdByMemberId, ...assigneeIds].filter(
+          (value): value is string => Boolean(value)
+        )
+      )
+    );
+
+    const [projectResult, memberResult] = await Promise.all([
+      supabase
+        .from("projects")
+        .select("name")
+        .eq("id", projectId)
+        .maybeSingle(),
+
+      memberIdsForNotification.length === 0
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+            .from("team_members")
+            .select("id, name")
+            .in("id", memberIdsForNotification),
+    ]);
+
+    if (projectResult.error) {
+      console.error(
+        "Unable to load project name for notification:",
+        projectResult.error
+      );
+    }
+
+    if (memberResult.error) {
+      console.error(
+        "Unable to load team names for notification:",
+        memberResult.error
+      );
+    }
+
+    const memberNames = new Map(
+      (memberResult.data ?? []).map(
+        (member: { id: string; name: string }) => [member.id, member.name]
+      )
+    );
+
+    const assigneeNames = assigneeIds
+      .map((memberId) => memberNames.get(memberId))
+      .filter((name): name is string => Boolean(name));
+
+    await sendDiscordNotification({
+      title: "🆕 New task created",
+      description: `**${task.title}**`,
+      color: discordColors.cyan,
+      fields: [
+        {
+          name: "Project",
+          value: projectResult.data?.name ?? "Unknown Project",
+          inline: true,
+        },
+        {
+          name: "Lead",
+          value: leadMemberId
+            ? memberNames.get(leadMemberId) ?? "Unknown"
+            : "Unassigned",
+          inline: true,
+        },
+        {
+          name: "Deadline",
+          value: formatDiscordDeadline(task.deadline),
+          inline: true,
+        },
+        {
+          name: "Assigned",
+          value:
+            assigneeNames.length > 0 ? assigneeNames.join(", ") : "No one yet",
+        },
+        {
+          name: "Created by",
+          value: createdByMemberId
+            ? memberNames.get(createdByMemberId) ?? "Unknown"
+            : "Unknown",
+          inline: true,
+        },
+      ],
+    });
 
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {

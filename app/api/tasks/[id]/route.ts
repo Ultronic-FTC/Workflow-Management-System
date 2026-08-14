@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { hasTeamAccess } from "@/lib/team-access-server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  discordColors,
+  formatDiscordDeadline,
+  sendDiscordNotification,
+} from "@/lib/notifications/discord";
 
 export const dynamic = "force-dynamic";
 
@@ -324,6 +329,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const body = (await request.json()) as UpdateBody;
     const action = body.action ?? "update_task";
     const supabase = createAdminClient();
+    let newlyAssignedMemberIds: string[] = [];
 
     const actor = await getActor(supabase, body.actor_member_id);
 
@@ -458,6 +464,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       const addIds = [...requestedIds].filter(
         (memberId) => !currentIds.has(memberId)
       );
+
+      newlyAssignedMemberIds = addIds;
 
       if (removeIds.length > 0) {
         const { error } = await supabase
@@ -910,6 +918,192 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const task = await loadDetail(supabase, id);
+
+    if (task) {
+      if (action === "update_task" && newlyAssignedMemberIds.length > 0) {
+        const { data: assignedMembers, error: assignedMemberError } =
+          await supabase
+            .from("team_members")
+            .select("id, name")
+            .in("id", newlyAssignedMemberIds);
+
+        if (assignedMemberError) {
+          console.error(
+            "Unable to load newly assigned team members:",
+            assignedMemberError
+          );
+        }
+
+        const names = (assignedMembers ?? [])
+          .map((member) => member.name)
+          .filter(Boolean);
+
+        await sendDiscordNotification({
+          title: "👤 Task assignment updated",
+          description: `**${task.title}**`,
+          color: discordColors.blue,
+          fields: [
+            {
+              name: "Project",
+              value: task.project_name,
+              inline: true,
+            },
+            {
+              name: "Added",
+              value: names.length > 0 ? names.join(", ") : "Team member",
+              inline: true,
+            },
+            {
+              name: "Changed by",
+              value: actor.name,
+              inline: true,
+            },
+          ],
+        });
+      } else if (action === "self_assign") {
+        await sendDiscordNotification({
+          title: "🙋 Self-assigned to task",
+          description: `**${actor.name}** joined **${task.title}**`,
+          color: discordColors.blue,
+          fields: [
+            {
+              name: "Project",
+              value: task.project_name,
+              inline: true,
+            },
+            {
+              name: "Staffing",
+              value: `${task.assignees.length} / ${task.people_needed}`,
+              inline: true,
+            },
+          ],
+        });
+      } else if (action === "start_work") {
+        await sendDiscordNotification({
+          title: "▶️ Work started",
+          description: `**${actor.name}** started **${task.title}**`,
+          color: discordColors.cyan,
+          fields: [
+            {
+              name: "Project",
+              value: task.project_name,
+              inline: true,
+            },
+            {
+              name: "Deadline",
+              value: formatDiscordDeadline(task.deadline),
+              inline: true,
+            },
+          ],
+        });
+      } else if (action === "block") {
+        await sendDiscordNotification({
+          title: "⛔ Task blocked",
+          description: `**${task.title}**`,
+          color: discordColors.red,
+          fields: [
+            {
+              name: "Project",
+              value: task.project_name,
+              inline: true,
+            },
+            {
+              name: "Blocked by",
+              value: actor.name,
+              inline: true,
+            },
+            {
+              name: "Reason",
+              value: task.blocked_reason || "No reason recorded",
+            },
+          ],
+        });
+      } else if (action === "resume_work") {
+        await sendDiscordNotification({
+          title: "🔄 Work resumed",
+          description: `**${actor.name}** resumed **${task.title}**`,
+          color: discordColors.cyan,
+          fields: [
+            {
+              name: "Project",
+              value: task.project_name,
+              inline: true,
+            },
+          ],
+        });
+      } else if (action === "submit_review") {
+        await sendDiscordNotification({
+          title: "👀 Ready for review",
+          description: `**${task.title}**`,
+          color: discordColors.yellow,
+          fields: [
+            {
+              name: "Project",
+              value: task.project_name,
+              inline: true,
+            },
+            {
+              name: "Submitted by",
+              value: actor.name,
+              inline: true,
+            },
+            {
+              name: "Lead",
+              value: task.lead_name ?? "Unassigned",
+              inline: true,
+            },
+          ],
+        });
+      } else if (action === "approve") {
+        await sendDiscordNotification({
+          title: "✅ Task completed",
+          description: `**${task.title}**`,
+          color: discordColors.green,
+          fields: [
+            {
+              name: "Project",
+              value: task.project_name,
+              inline: true,
+            },
+            {
+              name: "Approved by",
+              value: actor.name,
+              inline: true,
+            },
+            ...(task.review_notes
+              ? [
+                  {
+                    name: "Review note",
+                    value: task.review_notes,
+                  },
+                ]
+              : []),
+          ],
+        });
+      } else if (action === "return_for_changes") {
+        await sendDiscordNotification({
+          title: "↩️ Returned for changes",
+          description: `**${task.title}**`,
+          color: discordColors.red,
+          fields: [
+            {
+              name: "Project",
+              value: task.project_name,
+              inline: true,
+            },
+            {
+              name: "Reviewer",
+              value: actor.name,
+              inline: true,
+            },
+            {
+              name: "Changes requested",
+              value: task.review_notes || "See task review notes.",
+            },
+          ],
+        });
+      }
+    }
 
     return NextResponse.json({ task });
   } catch (error) {
