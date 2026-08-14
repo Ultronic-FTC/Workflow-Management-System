@@ -1,101 +1,56 @@
-# Ultronic Build 2D — Real Weekly Capacity Planning
+# Ultronic Build 2J — Real Project Creation
 
-This build implements the capacity model we agreed on:
+This fixes the Projects page itself.
 
-- Task Estimate = total expected effort for the whole task
-- Weekly Capacity = how many hours a person can give the team that week
-- Planned Hours = how many hours that specific person plans to spend on that task that week
-- Remaining Capacity = Available - Planned
+The reason the + New Project button was visible but did nothing is that the
+current `app/projects/page.tsx` is still the original static prototype. The
+button literally had no onClick handler.
 
-This means a six-hour task can be planned like:
-- Natalie: 1 hr this week
-- Ben: 3 hrs this week
-- Colton: 2 hrs this week
+This patch replaces that prototype with the real Supabase-backed Projects page.
 
-and a multi-week task can be split across different weeks.
+## What changes
 
-## Step 1 — Run the SQL migration in Supabase
+- + New Project opens a real creation form
+- New projects are POSTed to the existing `/api/projects` endpoint
+- The Projects page now loads the real `projects` table instead of the eight
+  hard-coded sample projects
+- Real task counts, blocked counts, review counts, progress, project lead, and
+  target dates are displayed
+- Technical / Operational filters work
+- Project Lead uses the real Ultronic roster
 
-Open:
+No Supabase migration is required because the existing Projects API and table
+already support project creation.
 
-Supabase -> SQL Editor -> New Query
-
-Copy and run:
-
-`supabase/migrations/003_capacity_planning.sql`
-
-It creates:
-
-- `weekly_capacity`
-- `task_weekly_plans`
-
-The second table is tied to `task_assignments`, so someone can only plan hours
-against a task they are actually assigned to.
-
-Expected result at the bottom:
-- task_weekly_plans
-- weekly_capacity
-
-## Step 2 — Copy the code patch into your repository
-
-NEW:
-- `app/api/capacity/route.ts`
-- `app/capacity/capacity.module.css`
+## INSTALL
 
 REPLACE:
-- `app/capacity/page.tsx`
-- `app/page.tsx`
+- `app/projects/page.tsx`
 
-The replacement `app/page.tsx` preserves the clickable task-card detail view
-and also makes the Team Board capacity summary use real weekly capacity data.
+NEW:
+- `app/projects/projects.module.css`
 
-## Step 3 — Commit and deploy
+Do not change `app/api/projects/route.ts`. Your existing API already supports
+both GET and POST.
 
-Suggested GitHub Desktop commit:
+## COMMIT
 
-`Add real weekly capacity planning`
+Suggested commit:
 
-Commit to main -> Push origin.
+`Connect Projects page to Supabase`
 
-Wait for Vercel to show Ready.
+Commit to main -> Push origin -> wait for Vercel Ready -> hard refresh.
 
-## Step 4 — Test Capacity
+## TEST
 
 1. Select yourself under Working As.
-2. Open Capacity.
-3. The current week should default to Monday of the current week.
-4. Click `Update My Capacity`.
-5. Enter how many hours you can give the team this week.
-6. For each task assigned to you, enter your planned hours for this week.
-7. Save.
+2. Open Projects.
+3. Click + New Project.
+4. Create a harmless test project.
+5. It should appear immediately in the real project grid.
+6. It will also become available in the Project dropdown when creating/editing
+   tasks because both features use the same `projects` table.
 
-The team table will calculate:
-- Available
-- Planned
-- Remaining
-- Unplanned assigned tasks
-- Workload percentage
-- Who is over capacity
-
-Use the arrows next to the week to plan another week.
-
-## Important behavior
-
-If an assigned task has no planned hours for the selected week, it is counted
-as `Unplanned` instead of silently disappearing from workload.
-
-If an assigned task has no total task estimate, the page also flags it as
-`Unestimated`.
-
-This is intentional so the capacity dashboard never looks artificially empty
-just because planning data is missing.
-
-## Team Board
-
-The Team Board capacity card now uses the current week's real totals:
-- Available
-- Planned
-- Remaining
-- Count over capacity when applicable
-
-No new Vercel environment variables are needed.
+Important: once this patch is installed, the old fake cards such as Intake,
+Autonomous, Drive Practice, Website, etc. disappear unless those projects
+actually exist in Supabase.
