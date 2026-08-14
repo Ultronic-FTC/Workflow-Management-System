@@ -1,113 +1,58 @@
-# Ultronic Simplified Access Patch
+# Ultronic Build 2A — Database-Backed Team Roster
 
-This patch removes individual Supabase authentication from the user experience.
+This patch replaces the hard-coded `Working as` names with the active rows from
+the Supabase `team_members` table.
 
-New flow:
+## Before deploying the code
 
-1. Enter one shared **Team Access Code**.
-2. Choose your name from **Working as** in the header.
-3. The browser remembers the selected person.
-4. **My Tasks** filters to that selected person.
+Add this server-only environment variable in Vercel:
 
-This is intentionally a trust-based team identity model. Selecting a name is not proof that the person is really that person.
+`SUPABASE_SECRET_KEY`
 
-## 1. Copy / replace these files
+Use the Secret key from:
 
-Copy the folders and files from this patch into the root of your real `Workflow-Management-System` repository and choose **Replace** when macOS asks.
+Supabase -> Project Settings -> API Keys -> Secret keys
 
-New files:
-- `app/access/page.tsx`
-- `app/api/access/route.ts`
-- `app/api/access/signout/route.ts`
-- `components/current-user-provider.tsx`
-- `components/profile-switcher.tsx`
-- `lib/access.ts`
-- `lib/team-members.ts`
-
-Replace:
-- `app/layout.tsx`
-- `app/page.tsx`
-- `app/globals.css`
-- `components/app-shell.tsx`
-- `proxy.ts`
-- `.env.example`
-
-## 2. Delete the old authentication files/folders
-
-Delete these from the repository:
-
-- `app/login/`
-- `app/auth/`
-- `lib/supabase/proxy.ts`
-
-Keep:
-- `lib/supabase/client.ts`
-- `lib/supabase/server.ts`
-
-We still need Supabase for the database in the next build.
-
-## 3. Add the shared code in Vercel
-
-In Vercel:
-
-**Project → Settings → Environment Variables**
-
-Add:
-
-`TEAM_ACCESS_CODE`
-
-Choose a team code that is not easy to guess. Example format:
-
-`Ultronic-8472-Workflow`
-
-Do NOT name it `NEXT_PUBLIC_TEAM_ACCESS_CODE`.
+Do not use a Publishable key for this variable.
+Do not prefix it with NEXT_PUBLIC_.
+Do not put the real value in GitHub.
 
 Set it for Production and Preview.
 
-Your existing Supabase URL and publishable key can stay exactly as they are.
+## Copy these files into the repository
 
-## 4. Optional local setup
+New:
+- `app/api/team-members/route.ts`
+- `lib/team-access-server.ts`
+- `lib/supabase/admin.ts`
 
-If you run the project on your Mac, add this line to `.env.local`:
+Replace:
+- `components/current-user-provider.tsx`
+- `components/profile-switcher.tsx`
+- `lib/team-members.ts`
+- `.env.example`
 
-`TEAM_ACCESS_CODE=your-real-team-code`
+The rest of the app stays unchanged.
 
-Do not commit `.env.local`.
+## Commit
 
-## 5. Edit the temporary team list
+Suggested message:
 
-For now, names are stored in:
-
-`lib/team-members.ts`
-
-Update that file to match the people you want in the dropdown.
-
-This is temporary. The next database build will move team members into Supabase.
-
-## 6. Commit and push
-
-Suggested commit message:
-
-`Replace individual auth with shared team access`
+`Load team roster from Supabase`
 
 Push to `main`.
 
-Vercel should deploy automatically.
+## Test
 
-## 7. Test
+After Vercel says Ready:
 
-When the deployment is Ready:
+1. Open the app.
+2. Enter the shared team access code if required.
+3. Open the `Working as` dropdown.
+4. It should contain the active `team_members` rows from Supabase, in sort order.
+5. Select a name.
+6. Refresh the page.
+7. The selected person should remain selected on that browser.
 
-1. Open the live Vercel URL in a private/incognito window.
-2. You should be sent to `/access`.
-3. Enter the shared code.
-4. You should land on Team Board.
-5. Choose a name under **Working as**.
-6. Click **My Tasks**.
-7. The board should filter to tasks whose Lead matches that selected person.
-
-## Security note
-
-This removes individual authentication on purpose. The shared access code keeps casual outside visitors out, but the selected identity is trust-based.
-
-When we connect real task data in the next build, database writes should go through protected server routes using the shared-access cookie rather than exposing unrestricted anonymous writes directly from the browser.
+The sample Kanban cards are still hard-coded in this patch. The next patch will
+move Projects and Tasks into Supabase.
