@@ -4,7 +4,12 @@ import { useState } from "react";
 import { Metric, TaskCard, type TaskCardProps } from "@/components/ui";
 import { useCurrentUser } from "@/components/current-user-provider";
 
-type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst columns: BoardColumn[] = [
+type BoardColumn = {
+  name: string;
+  cards: TaskCardProps[];
+};
+
+const columns: BoardColumn[] = [
   {
     name: "Backlog",
     cards: [
@@ -12,7 +17,7 @@ type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst co
         title: "Scouting heat-map idea",
         category: "Strategy + Business",
         project: "Scouting",
-        tone: "operational" as const,
+        tone: "operational",
         lead: "Natalie",
         estimate: "2 hrs",
       },
@@ -20,7 +25,7 @@ type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst co
         title: "Prototype alternate roller",
         category: "Design",
         project: "Intake",
-        tone: "technical" as const,
+        tone: "technical",
         lead: "Sophie",
         estimate: "3 hrs",
       },
@@ -33,7 +38,7 @@ type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst co
         title: "Prepare STEM Tent",
         category: "Community Outreach",
         project: "STEM Tent",
-        tone: "operational" as const,
+        tone: "operational",
         people: "1 / 3",
         estimate: "2 hrs",
         due: "Aug 16",
@@ -48,7 +53,7 @@ type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst co
         title: "Auto path tuning",
         category: "Programming",
         project: "Autonomous",
-        tone: "technical" as const,
+        tone: "technical",
         lead: "Ben",
         people: "2 / 2",
         estimate: "4 hrs",
@@ -63,7 +68,7 @@ type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst co
         title: "Redesign Intake Rollers",
         category: "Design",
         project: "Intake",
-        tone: "technical" as const,
+        tone: "technical",
         lead: "Natalie",
         people: "2 / 3",
         estimate: "2 hrs",
@@ -74,7 +79,7 @@ type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst co
         title: "Portfolio structure",
         category: "Strategy + Business",
         project: "Portfolio",
-        tone: "operational" as const,
+        tone: "operational",
         lead: "Sophie",
         people: "2 / 2",
         estimate: "3 hrs",
@@ -89,7 +94,7 @@ type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst co
         title: "Test intake compression",
         category: "Build",
         project: "Intake",
-        tone: "technical" as const,
+        tone: "technical",
         lead: "Michael",
         people: "2 / 2",
         estimate: "2 hrs",
@@ -105,7 +110,7 @@ type BoardColumn = {\n  name: string;\n  cards: TaskCardProps[];\n};\n\nconst co
         title: "Sponsor follow-up template",
         category: "Professional Outreach",
         project: "Fundraising",
-        tone: "operational" as const,
+        tone: "operational",
         lead: "Natalie",
         people: "1 / 1",
         estimate: "1 hr",
