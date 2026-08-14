@@ -1,0 +1,3 @@
+-- Placeholder only.
+-- The production schema will be added in Build 2 after the UI shell is deployed.
+-- Do not create tables manually in the Supabase dashboard yet.
