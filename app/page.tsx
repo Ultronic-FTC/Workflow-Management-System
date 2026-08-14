@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Metric } from "@/components/ui";
 import { useCurrentUser } from "@/components/current-user-provider";
+import { TaskDetailModal } from "@/components/task-detail-modal";
 import styles from "./team-board.module.css";
 
 type TaskStatus =
@@ -670,138 +671,15 @@ export default function TeamBoardPage() {
       )}
 
       {selectedTask && (
-        <div
-          className={styles.overlay}
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) {
-              setSelectedTask(null);
-            }
-          }}
-        >
-          <section
-            className={`${styles.modal} ${styles.detailModal}`}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="task-detail-title"
-          >
-            <div className={styles.modalHeader}>
-              <div>
-                <p className="eyebrow">
-                  {selectedTask.category_name} · {selectedTask.project_name}
-                </p>
-                <h2 id="task-detail-title">{selectedTask.title}</h2>
-              </div>
-              <button
-                className={styles.close}
-                onClick={() => setSelectedTask(null)}
-                aria-label="Close task details"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className={styles.detailBody}>
-              <div className={styles.detailStatusRow}>
-                <span className={styles.detailPill}>
-                  {titleCase(selectedTask.status)}
-                </span>
-                <span className={styles.detailPill}>
-                  {titleCase(selectedTask.priority)} Priority
-                </span>
-                {isOverdue(selectedTask) && (
-                  <span className={`${styles.detailPill} ${styles.detailOverdue}`}>
-                    Overdue
-                  </span>
-                )}
-              </div>
-
-              <section className={styles.detailSection}>
-                <h3>Description</h3>
-                <p>
-                  {selectedTask.description?.trim() ||
-                    "No description has been added yet."}
-                </p>
-              </section>
-
-              <div className={styles.detailGrid}>
-                <section>
-                  <span className={styles.detailLabel}>Project</span>
-                  <strong>{selectedTask.project_name}</strong>
-                </section>
-
-                <section>
-                  <span className={styles.detailLabel}>Category</span>
-                  <strong>{selectedTask.category_name}</strong>
-                </section>
-
-                <section>
-                  <span className={styles.detailLabel}>Task Lead</span>
-                  <strong>{selectedTask.lead_name ?? "Unassigned"}</strong>
-                </section>
-
-                <section>
-                  <span className={styles.detailLabel}>Point of Contact</span>
-                  <strong>{selectedTask.poc_name ?? "None"}</strong>
-                </section>
-
-                <section>
-                  <span className={styles.detailLabel}>People Needed</span>
-                  <strong>{selectedTask.people_needed}</strong>
-                </section>
-
-                <section>
-                  <span className={styles.detailLabel}>Assigned</span>
-                  <strong>
-                    {selectedTask.assigned_count} / {selectedTask.people_needed}
-                  </strong>
-                </section>
-
-                <section>
-                  <span className={styles.detailLabel}>Estimate</span>
-                  <strong>{formatEstimate(selectedTask.estimated_minutes)}</strong>
-                </section>
-
-                <section>
-                  <span className={styles.detailLabel}>Deadline</span>
-                  <strong>{formatDeadline(selectedTask.deadline)}</strong>
-                </section>
-
-                <section>
-                  <span className={styles.detailLabel}>Difficulty</span>
-                  <strong>
-                    {selectedTask.difficulty
-                      ? `${selectedTask.difficulty} / 5`
-                      : "Not set"}
-                  </strong>
-                </section>
-              </div>
-
-              <section className={styles.detailSection}>
-                <h3>Assigned Team Members</h3>
-                {selectedTask.assignee_names.length > 0 ? (
-                  <div className={styles.memberChips}>
-                    {selectedTask.assignee_names.map((name) => (
-                      <span key={name}>{name}</span>
-                    ))}
-                  </div>
-                ) : (
-                  <p>No one is assigned yet.</p>
-                )}
-              </section>
-
-              <div className={styles.detailActions}>
-                <button
-                  className={styles.secondary}
-                  type="button"
-                  onClick={() => setSelectedTask(null)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
+        <TaskDetailModal
+          taskId={selectedTask.id}
+          projects={projects}
+          categories={categories}
+          teamMembers={teamMembers}
+          currentUser={currentUser}
+          onClose={() => setSelectedTask(null)}
+          onChanged={loadBoard}
+        />
       )}
 
       {showModal && (
