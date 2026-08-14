@@ -1,58 +1,81 @@
-# Ultronic Build 2A — Database-Backed Team Roster
+# Ultronic Build 2B — Real Projects
 
-This patch replaces the hard-coded `Working as` names with the active rows from
-the Supabase `team_members` table.
+This build makes the Projects page database-backed and makes `+ New Project`
+functional.
 
-## Before deploying the code
+It also includes the SQL seed for the four first real projects and their first
+tasks.
 
-Add this server-only environment variable in Vercel:
+## Step 1 — Run the SQL seed in Supabase
 
-`SUPABASE_SECRET_KEY`
+Open:
 
-Use the Secret key from:
+Supabase -> SQL Editor -> New Query
 
-Supabase -> Project Settings -> API Keys -> Secret keys
+Paste the contents of:
 
-Do not use a Publishable key for this variable.
-Do not prefix it with NEXT_PUBLIC_.
-Do not put the real value in GitHub.
+`supabase/migrations/002_initial_projects_and_tasks.sql`
 
-Set it for Production and Preview.
+Click Run.
 
-## Copy these files into the repository
+Expected projects:
+- STEM Tent
+- FLL Tutor
+- Fundraising
+- Professional Demo
+
+Professional Demo has no project target date on purpose. The two outreach tasks
+under it each have their own deadline.
+
+## Step 2 — Copy the app patch
+
+Copy these into the root of your real repository:
 
 New:
-- `app/api/team-members/route.ts`
-- `lib/team-access-server.ts`
-- `lib/supabase/admin.ts`
+- `app/api/projects/route.ts`
+- `app/projects/projects.module.css`
 
 Replace:
-- `components/current-user-provider.tsx`
-- `components/profile-switcher.tsx`
-- `lib/team-members.ts`
-- `.env.example`
+- `app/projects/page.tsx`
 
-The rest of the app stays unchanged.
+No new Vercel environment variables are needed. This build reuses:
+- TEAM_ACCESS_CODE
+- NEXT_PUBLIC_SUPABASE_URL
+- SUPABASE_SECRET_KEY
 
-## Commit
+## Step 3 — Commit
 
 Suggested message:
 
-`Load team roster from Supabase`
+`Connect Projects to Supabase`
 
-Push to `main`.
+Push to main and wait for Vercel to show Ready.
 
-## Test
+## Step 4 — Test
 
-After Vercel says Ready:
+Open Projects.
 
-1. Open the app.
-2. Enter the shared team access code if required.
-3. Open the `Working as` dropdown.
-4. It should contain the active `team_members` rows from Supabase, in sort order.
-5. Select a name.
-6. Refresh the page.
-7. The selected person should remain selected on that browser.
+You should see the four database projects instead of the old sample projects.
 
-The sample Kanban cards are still hard-coded in this patch. The next patch will
-move Projects and Tasks into Supabase.
+The cards should show:
+- real lead
+- real target date
+- real task count
+- calculated completion percentage
+- blocked/review counts when applicable
+
+Click `+ New Project`.
+
+Create a test project or a real project. It should appear after creation
+without editing Supabase manually.
+
+## Note about progress
+
+For now:
+
+`progress = completed tasks / total active tasks`
+
+When a project has zero tasks, progress is 0%.
+
+Later we can optionally add weighted progress if some tasks are much larger
+than others.
