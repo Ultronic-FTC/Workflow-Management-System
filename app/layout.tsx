@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./command-center-theme.css";
 import { AppShell } from "@/components/app-shell";
 import { CurrentUserProvider } from "@/components/current-user-provider";
 
 export const metadata: Metadata = {
-  title: "Ultronic Team Manager",
+  title: "Ultronic Team Command Center",
   description: "FTC team project, task, capacity, and workflow management",
 };
 

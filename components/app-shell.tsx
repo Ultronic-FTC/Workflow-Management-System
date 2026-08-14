@@ -33,27 +33,37 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <Link href="/" className="brand" aria-label="Ultronic Team Manager home">
-          <span className="brand-mark" aria-hidden="true">
-            <i></i><i></i><i></i>
+    <div className="app-shell command-center-shell">
+      <header className="topbar command-center-topbar">
+        <Link
+          href="/"
+          className="brand command-center-brand"
+          aria-label="Ultronic Team Command Center home"
+        >
+          <span className="command-center-logo-wrap">
+            <img
+              src="/ultronic-logo.png"
+              alt=""
+              className="command-center-logo"
+            />
           </span>
-          <span>
+
+          <span className="command-center-wordmark">
             <strong>ULTRONIC</strong>
-            <small>TEAM MANAGER</small>
+            <small>TEAM COMMAND CENTER</small>
           </span>
         </Link>
 
-        <div className="global-search">
-          ⌕&nbsp;&nbsp; Search tasks, projects, people…
+        <div className="global-search command-center-search">
+          <span className="command-search-icon">⌕</span>
+          <span>Search tasks, projects, people…</span>
         </div>
 
         <ProfileSwitcher />
 
         <form action="/api/access/signout" method="post">
           <button
-            className="ghost-button compact-button"
+            className="ghost-button compact-button command-center-lock"
             type="submit"
             title="Lock team app"
           >
@@ -61,12 +71,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </form>
 
-        <button className="primary-button" type="button" onClick={openNewTask}>
+        <button
+          className="primary-button command-center-new-task"
+          type="button"
+          onClick={openNewTask}
+        >
           + New Task
         </button>
       </header>
 
-      <nav className="nav-tabs">
+      <nav className="nav-tabs command-center-nav">
         {nav.map(([href, label]) => (
           <Link
             href={href}
