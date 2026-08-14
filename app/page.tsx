@@ -59,6 +59,13 @@ type CategoryOption = {
   sort_order: number;
 };
 
+type CapacitySummary = {
+  available_minutes: number;
+  planned_minutes: number;
+  remaining_minutes: number;
+  over_capacity_count: number;
+};
+
 const boardColumns: { status: TaskStatus; label: string }[] = [
   { status: "backlog", label: "Backlog" },
   { status: "needs_assignment", label: "Needs Assignment" },
@@ -108,6 +115,22 @@ function titleCase(value: string) {
     .join(" ");
 }
 
+function currentWeekStart() {
+  const date = new Date();
+  const value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const offset = (value.getDay() + 6) % 7;
+  value.setDate(value.getDate() - offset);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function capacityHours(minutes: number) {
+  const value = minutes / 60;
+  return Number.isInteger(value) ? `${value} hrs` : `${value.toFixed(1)} hrs`;
+}
+
 export default function TeamBoardPage() {
   const { currentUser, teamMembers, hydrated } = useCurrentUser();
 
@@ -116,6 +139,12 @@ export default function TeamBoardPage() {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [capacitySummary, setCapacitySummary] = useState<CapacitySummary>({
+    available_minutes: 0,
+    planned_minutes: 0,
+    remaining_minutes: 0,
+    over_capacity_count: 0,
+  });
 
   const [categoryFilter, setCategoryFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -152,16 +181,30 @@ export default function TeamBoardPage() {
     setLoadError("");
 
     try {
-      const response = await fetch("/api/tasks", { cache: "no-store" });
-      const payload = await response.json();
+      const [taskResponse, capacityResponse] = await Promise.all([
+        fetch("/api/tasks", { cache: "no-store" }),
+        fetch(`/api/capacity?week_start=${currentWeekStart()}`, { cache: "no-store" }),
+      ]);
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to load team board.");
+      const taskPayload = await taskResponse.json();
+      const capacityPayload = await capacityResponse.json();
+
+      if (!taskResponse.ok) {
+        throw new Error(taskPayload.error ?? "Unable to load team board.");
       }
 
-      setTasks(Array.isArray(payload.tasks) ? payload.tasks : []);
-      setProjects(Array.isArray(payload.projects) ? payload.projects : []);
-      setCategories(Array.isArray(payload.categories) ? payload.categories : []);
+      setTasks(Array.isArray(taskPayload.tasks) ? taskPayload.tasks : []);
+      setProjects(Array.isArray(taskPayload.projects) ? taskPayload.projects : []);
+      setCategories(Array.isArray(taskPayload.categories) ? taskPayload.categories : []);
+
+      if (capacityResponse.ok && capacityPayload.summary) {
+        setCapacitySummary({
+          available_minutes: capacityPayload.summary.available_minutes ?? 0,
+          planned_minutes: capacityPayload.summary.planned_minutes ?? 0,
+          remaining_minutes: capacityPayload.summary.remaining_minutes ?? 0,
+          over_capacity_count: capacityPayload.summary.over_capacity_count ?? 0,
+        });
+      }
     } catch (error) {
       setLoadError(
         error instanceof Error ? error.message : "Unable to load team board."
@@ -384,16 +427,16 @@ export default function TeamBoardPage() {
         <div className="capacity-card">
           <div>
             <small>TEAM CAPACITY · THIS WEEK</small>
-            <strong>—</strong>
-            <span>not configured yet</span>
+            <strong>{capacityHours(capacitySummary.available_minutes)}</strong>
+            <span>available</span>
           </div>
           <div>
-            <strong>—</strong>
-            <span>committed</span>
+            <strong>{capacityHours(capacitySummary.planned_minutes)}</strong>
+            <span>planned</span>
           </div>
           <div>
-            <strong>Next</strong>
-            <span>capacity build</span>
+            <strong>{capacityHours(capacitySummary.remaining_minutes)}</strong>
+            <span>remaining{capacitySummary.over_capacity_count > 0 ? ` · ${capacitySummary.over_capacity_count} over` : ""}</span>
           </div>
         </div>
       </section>
