@@ -14,6 +14,26 @@ type NewProjectBody = {
   created_by_member_id?: string | null;
 };
 
+type HistoricalProjectRow = {
+  work_date: string;
+  project_name: string;
+  category_name: string;
+  task_name: string;
+  work_type: string | null;
+  description: string | null;
+  minutes: number;
+};
+
+function historicalActivityKey(row: HistoricalProjectRow) {
+  return [
+    row.work_date,
+    row.category_name,
+    row.task_name,
+    row.work_type ?? "",
+    row.description ?? "",
+  ].join("||");
+}
+
 const allowedDivisions = new Set(["technical", "operational", "both"]);
 const allowedStatuses = new Set(["planning", "active", "paused", "completed"]);
 
@@ -63,6 +83,20 @@ export async function GET() {
               .neq("status", "archived")
           ).data ?? [];
 
+    const { data: historicalRows, error: historyError } = await supabase
+      .from("historical_work_log")
+      .select(
+        "work_date, project_name, category_name, task_name, work_type, description, minutes"
+      );
+
+    if (historyError) {
+      console.error("Unable to load historical project work:", historyError);
+      return NextResponse.json(
+        { error: "Unable to load historical project work." },
+        { status: 500 }
+      );
+    }
+
     const leadRows =
       leadIds.length === 0
         ? []
@@ -77,6 +111,23 @@ export async function GET() {
       leadRows.map((member) => [member.id, member.name])
     );
 
+    const historicalByProject = new Map<
+      string,
+      { minutes: number; activities: Set<string> }
+    >();
+
+    for (const row of (historicalRows ?? []) as HistoricalProjectRow[]) {
+      const key = row.project_name.trim().toLowerCase();
+      const current = historicalByProject.get(key) ?? {
+        minutes: 0,
+        activities: new Set<string>(),
+      };
+
+      current.minutes += Number(row.minutes || 0);
+      current.activities.add(historicalActivityKey(row));
+      historicalByProject.set(key, current);
+    }
+
     const projectsWithStats = projectRows.map((project) => {
       const projectTasks = taskRows.filter(
         (task) => task.project_id === project.id
@@ -90,9 +141,33 @@ export async function GET() {
       const reviewCount = projectTasks.filter(
         (task) => task.status === "ready_for_review"
       ).length;
-      const taskCount = projectTasks.length;
-      const progress =
-        taskCount === 0 ? 0 : Math.round((completedCount / taskCount) * 100);
+      const liveTaskCount = projectTasks.length;
+
+      const historicalStats = historicalByProject.get(
+        project.name.trim().toLowerCase()
+      );
+      const historicalActivityCount =
+        historicalStats?.activities.size ?? 0;
+      const historicalHours = (historicalStats?.minutes ?? 0) / 60;
+
+      const historicalOnly =
+        project.status === "completed" &&
+        liveTaskCount === 0 &&
+        historicalActivityCount > 0;
+
+      const taskCount = historicalOnly
+        ? historicalActivityCount
+        : liveTaskCount;
+
+      const displayedCompletedCount = historicalOnly
+        ? historicalActivityCount
+        : completedCount;
+
+      const progress = historicalOnly
+        ? 100
+        : liveTaskCount === 0
+          ? 0
+          : Math.round((completedCount / liveTaskCount) * 100);
 
       return {
         ...project,
@@ -100,10 +175,14 @@ export async function GET() {
           ? leadNames.get(project.lead_member_id) ?? "Unknown"
           : null,
         task_count: taskCount,
-        completed_count: completedCount,
+        live_task_count: liveTaskCount,
+        completed_count: displayedCompletedCount,
         blocked_count: blockedCount,
         review_count: reviewCount,
         progress,
+        historical_activity_count: historicalActivityCount,
+        historical_hours: historicalHours,
+        historical_only: historicalOnly,
       };
     });
 

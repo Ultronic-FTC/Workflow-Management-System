@@ -14,10 +14,14 @@ type Project = {
   lead_name: string | null;
   target_date: string | null;
   task_count: number;
+  live_task_count: number;
   completed_count: number;
   blocked_count: number;
   review_count: number;
   progress: number;
+  historical_activity_count: number;
+  historical_hours: number;
+  historical_only: boolean;
 };
 
 type DivisionFilter = "all" | "technical" | "operational";
@@ -100,7 +104,17 @@ export default function ProjectsPage() {
       );
     });
 
+    const statusRank = (project: Project) => {
+      if (project.status === "active") return 0;
+      if (project.status === "planning") return 1;
+      if (project.status === "paused") return 2;
+      return 3;
+    };
+
     return [...filtered].sort((a, b) => {
+      const statusDifference = statusRank(a) - statusRank(b);
+      if (statusDifference !== 0) return statusDifference;
+
       if (!a.target_date && !b.target_date) {
         return a.name.localeCompare(b.name);
       }
@@ -297,11 +311,34 @@ export default function ProjectsPage() {
 
                 <div className="project-stats">
                   <span>
-                    {project.task_count} task
-                    {project.task_count === 1 ? "" : "s"}
+                    {project.historical_only
+                      ? `${project.task_count} completed activit${
+                          project.task_count === 1 ? "y" : "ies"
+                        }`
+                      : `${project.task_count} task${
+                          project.task_count === 1 ? "" : "s"
+                        }`}
                   </span>
-                  <span>{riskText}</span>
+                  <span>
+                    {project.historical_only
+                      ? `${project.historical_hours.toFixed(
+                          Number.isInteger(project.historical_hours) ? 0 : 1
+                        )} hrs`
+                      : riskText}
+                  </span>
                 </div>
+
+                {project.historical_activity_count > 0 &&
+                  !project.historical_only && (
+                    <div className={styles.historyStrip}>
+                      HISTORY · {project.historical_activity_count} activit
+                      {project.historical_activity_count === 1 ? "y" : "ies"} ·{" "}
+                      {project.historical_hours.toFixed(
+                        Number.isInteger(project.historical_hours) ? 0 : 1
+                      )}{" "}
+                      hrs
+                    </div>
+                  )}
 
                 <div className={styles.projectMeta}>
                   <span>
@@ -312,7 +349,10 @@ export default function ProjectsPage() {
                   </span>
                 </div>
 
-                <footer>Target: {formatTargetDate(project.target_date)}</footer>
+                <footer>
+                  {project.historical_only ? "Last activity" : "Target"}:{" "}
+                  {formatTargetDate(project.target_date)}
+                </footer>
               </article>
             );
           })}

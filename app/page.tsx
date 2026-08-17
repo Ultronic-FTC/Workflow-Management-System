@@ -74,7 +74,6 @@ const boardColumns: { status: TaskStatus; label: string }[] = [
   { status: "in_progress", label: "In Progress" },
   { status: "blocked", label: "Blocked" },
   { status: "ready_for_review", label: "Ready for Review" },
-  { status: "completed", label: "Completed" },
 ];
 
 function formatDeadline(value: string | null) {
@@ -146,6 +145,7 @@ export default function TeamBoardPage() {
     remaining_minutes: 0,
     over_capacity_count: 0,
   });
+  const [historicalCompletedCount, setHistoricalCompletedCount] = useState(0);
 
   const [categoryFilter, setCategoryFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -182,13 +182,18 @@ export default function TeamBoardPage() {
     setLoadError("");
 
     try {
-      const [taskResponse, capacityResponse] = await Promise.all([
-        fetch("/api/tasks", { cache: "no-store" }),
-        fetch(`/api/capacity?week_start=${currentWeekStart()}`, { cache: "no-store" }),
-      ]);
+      const [taskResponse, capacityResponse, historyResponse] =
+        await Promise.all([
+          fetch("/api/tasks", { cache: "no-store" }),
+          fetch(`/api/capacity?week_start=${currentWeekStart()}`, {
+            cache: "no-store",
+          }),
+          fetch("/api/historical-work/summary", { cache: "no-store" }),
+        ]);
 
       const taskPayload = await taskResponse.json();
       const capacityPayload = await capacityResponse.json();
+      const historyPayload = await historyResponse.json();
 
       if (!taskResponse.ok) {
         throw new Error(taskPayload.error ?? "Unable to load team board.");
@@ -205,6 +210,12 @@ export default function TeamBoardPage() {
           remaining_minutes: capacityPayload.summary.remaining_minutes ?? 0,
           over_capacity_count: capacityPayload.summary.over_capacity_count ?? 0,
         });
+      }
+
+      if (historyResponse.ok) {
+        setHistoricalCompletedCount(
+          Number(historyPayload.historical_completed_count ?? 0)
+        );
       }
     } catch (error) {
       setLoadError(
@@ -372,8 +383,11 @@ export default function TeamBoardPage() {
       review: tasks.filter(
         (task) => task.status === "ready_for_review"
       ).length,
+      completed:
+        tasks.filter((task) => task.status === "completed").length +
+        historicalCompletedCount,
     };
-  }, [tasks]);
+  }, [tasks, historicalCompletedCount]);
 
   const hasFilters =
     Boolean(categoryFilter) ||
@@ -406,7 +420,10 @@ export default function TeamBoardPage() {
           <h1>Team Board</h1>
           <p>Everything the team is working on, in one place.</p>
         </div>
-        <button className="primary-button" onClick={() => openNewTask()}>
+        <button
+          className={`primary-button ${styles.pageNewTask}`}
+          onClick={() => openNewTask()}
+        >
           + New Task
         </button>
       </div>
@@ -425,6 +442,7 @@ export default function TeamBoardPage() {
         <Metric value={metrics.blocked} label="Blocked" tone="red" />
         <Metric value={metrics.needPeople} label="Need People" tone="yellow" />
         <Metric value={metrics.review} label="Need Review" tone="cyan" />
+        <Metric value={metrics.completed} label="Completed" tone="neutral" />
         <div className="capacity-card">
           <div>
             <small>TEAM CAPACITY · THIS WEEK</small>
@@ -561,7 +579,7 @@ export default function TeamBoardPage() {
         <section
           className="kanban"
           style={{
-            gridTemplateColumns: "repeat(7, minmax(235px, 1fr))",
+            gridTemplateColumns: "repeat(6, minmax(235px, 1fr))",
           }}
         >
           {boardColumns.map((column) => {
