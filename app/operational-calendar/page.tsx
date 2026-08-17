@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TaskDetailModal } from "@/components/task-detail-modal";
 import { useCurrentUser } from "@/components/current-user-provider";
+import {
+  HistoricalWorkModal,
+  type HistoricalEventDetail,
+} from "@/components/historical-work-modal";
 import styles from "./operational-calendar.module.css";
 
 type TaskStatus =
@@ -49,6 +53,22 @@ type Category = {
   sort_order: number;
 };
 
+type HistoricalRow = {
+  id: string;
+  source_row: number;
+  member_id: string;
+  member_name: string;
+  member_active: boolean;
+  work_date: string;
+  category_name: string;
+  project_name: string;
+  task_name: string;
+  minutes: number;
+  hours: number;
+  work_type: string | null;
+  description: string | null;
+};
+
 type CalendarEvent =
   | {
       key: string;
@@ -73,6 +93,16 @@ type CalendarEvent =
       dateKey: string;
       type: "competition";
       title: string;
+    }
+  | {
+      key: string;
+      dateKey: string;
+      type: "historical";
+      title: string;
+      projectName: string;
+      totalHours: number;
+      participantCount: number;
+      detail: HistoricalEventDetail;
     };
 
 const weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -152,10 +182,13 @@ export default function OperationalCalendarPage() {
   const [taskProjects, setTaskProjects] = useState<Project[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [competitionDate, setCompetitionDate] = useState<string | null>(null);
+  const [historicalRows, setHistoricalRows] = useState<HistoricalRow[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedHistory, setSelectedHistory] =
+    useState<HistoricalEventDetail | null>(null);
 
   const [monthCursor, setMonthCursor] = useState(() => {
     const now = new Date();
@@ -167,16 +200,22 @@ export default function OperationalCalendarPage() {
     setPageError("");
 
     try {
-      const [taskResponse, projectResponse, competitionResponse] =
-        await Promise.all([
-          fetch("/api/tasks", { cache: "no-store" }),
-          fetch("/api/projects", { cache: "no-store" }),
-          fetch("/api/settings/competition-date", { cache: "no-store" }),
-        ]);
+      const [
+        taskResponse,
+        projectResponse,
+        competitionResponse,
+        historicalResponse,
+      ] = await Promise.all([
+        fetch("/api/tasks", { cache: "no-store" }),
+        fetch("/api/projects", { cache: "no-store" }),
+        fetch("/api/settings/competition-date", { cache: "no-store" }),
+        fetch("/api/historical-work", { cache: "no-store" }),
+      ]);
 
       const taskPayload = await taskResponse.json();
       const projectPayload = await projectResponse.json();
       const competitionPayload = await competitionResponse.json();
+      const historicalPayload = await historicalResponse.json();
 
       if (!taskResponse.ok) {
         throw new Error(taskPayload.error ?? "Unable to load tasks.");
@@ -192,6 +231,12 @@ export default function OperationalCalendarPage() {
         );
       }
 
+      if (!historicalResponse.ok) {
+        throw new Error(
+          historicalPayload.error ?? "Unable to load historical work."
+        );
+      }
+
       setTasks(Array.isArray(taskPayload.tasks) ? taskPayload.tasks : []);
       setTaskProjects(
         Array.isArray(taskPayload.projects) ? taskPayload.projects : []
@@ -203,6 +248,11 @@ export default function OperationalCalendarPage() {
         Array.isArray(projectPayload.projects) ? projectPayload.projects : []
       );
       setCompetitionDate(competitionPayload.next_competition_date ?? null);
+      setHistoricalRows(
+        Array.isArray(historicalPayload.history)
+          ? historicalPayload.history
+          : []
+      );
     } catch (error) {
       setPageError(
         error instanceof Error ? error.message : "Unable to load calendar."
@@ -271,8 +321,78 @@ export default function OperationalCalendarPage() {
       });
     }
 
+    const historicalGroups = new Map<string, HistoricalRow[]>();
+
+    for (const row of historicalRows) {
+      const dateKey = dateKeyFromValue(row.work_date);
+      if (!dateKey) continue;
+
+      const groupKey = [
+        dateKey,
+        row.category_name,
+        row.project_name,
+        row.task_name,
+        row.work_type ?? "",
+        row.description ?? "",
+      ].join("||");
+
+      const current = historicalGroups.get(groupKey) ?? [];
+      current.push(row);
+      historicalGroups.set(groupKey, current);
+    }
+
+    for (const [groupKey, rows] of historicalGroups) {
+      const first = rows[0];
+      const dateKey = dateKeyFromValue(first.work_date);
+      if (!dateKey) continue;
+
+      const participantMap = new Map<
+        string,
+        { name: string; hours: number; active: boolean }
+      >();
+
+      for (const row of rows) {
+        const current = participantMap.get(row.member_name) ?? {
+          name: row.member_name,
+          hours: 0,
+          active: row.member_active,
+        };
+
+        current.hours += Number(row.hours || 0);
+        participantMap.set(row.member_name, current);
+      }
+
+      const participants = [...participantMap.values()];
+      const totalHours = participants.reduce(
+        (sum, participant) => sum + participant.hours,
+        0
+      );
+
+      const detail: HistoricalEventDetail = {
+        dateKey,
+        category: first.category_name,
+        project: first.project_name,
+        task: first.task_name,
+        workType: first.work_type,
+        description: first.description,
+        totalHours,
+        participants,
+      };
+
+      nextEvents.push({
+        key: `historical-${groupKey}`,
+        dateKey,
+        type: "historical",
+        title: first.task_name,
+        projectName: first.project_name,
+        totalHours,
+        participantCount: participants.length,
+        detail,
+      });
+    }
+
     return nextEvents;
-  }, [operationalTasks, projects, competitionDate]);
+  }, [operationalTasks, projects, competitionDate, historicalRows]);
 
   const eventMap = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
@@ -288,6 +408,7 @@ export default function OperationalCalendarPage() {
         const eventRank = (event: CalendarEvent) => {
           if (event.type === "competition") return 0;
           if (event.type === "project") return 1;
+          if (event.type === "historical") return 8;
 
           if (event.status === "blocked") return 2;
           if (event.status === "ready_for_review") return 3;
@@ -363,13 +484,30 @@ export default function OperationalCalendarPage() {
       return Boolean(dateKey?.startsWith(monthPrefix));
     }).length;
 
+    const historyThisMonth = historicalRows.filter((row) => {
+      const dateKey = dateKeyFromValue(row.work_date);
+      return Boolean(dateKey?.startsWith(monthPrefix));
+    });
+
+    const historicalHours = historyThisMonth.reduce(
+      (sum, row) => sum + Number(row.hours || 0),
+      0
+    );
+
     return {
       dueThisMonth,
       overdue,
       unscheduled,
       projectTargets,
+      historicalHours,
     };
-  }, [operationalTasks, projects, monthPrefix, todayKey]);
+  }, [
+    operationalTasks,
+    projects,
+    historicalRows,
+    monthPrefix,
+    todayKey,
+  ]);
 
   const unscheduledTasks = useMemo(
     () =>
@@ -471,6 +609,15 @@ export default function OperationalCalendarPage() {
           <strong>{summary.unscheduled}</strong>
           <span>Unscheduled Tasks</span>
         </div>
+
+        <div className={`${styles.summaryCard} ${styles.historySummaryCard}`}>
+          <strong>
+            {Number.isInteger(summary.historicalHours)
+              ? summary.historicalHours
+              : summary.historicalHours.toFixed(1)}
+          </strong>
+          <span>Historical Hours This Month</span>
+        </div>
       </div>
 
       <div className={styles.legend}>
@@ -488,6 +635,9 @@ export default function OperationalCalendarPage() {
         </span>
         <span>
           <i className={styles.reviewLegend} /> Ready for Review
+        </span>
+        <span>
+          <i className={styles.historyLegend} /> Historical Work
         </span>
       </div>
 
@@ -547,6 +697,28 @@ export default function OperationalCalendarPage() {
                             <span>PROJECT TARGET</span>
                             <strong>{event.projectName}</strong>
                           </div>
+                        );
+                      }
+
+                      if (event.type === "historical") {
+                        return (
+                          <button
+                            type="button"
+                            className={styles.historicalEvent}
+                            key={event.key}
+                            onClick={() => setSelectedHistory(event.detail)}
+                            title={`${event.title} · ${event.totalHours} team hours`}
+                          >
+                            <span>HISTORY · {event.projectName}</span>
+                            <strong>{event.title}</strong>
+                            <small>
+                              {event.totalHours.toFixed(
+                                Number.isInteger(event.totalHours) ? 0 : 1
+                              )}{" "}
+                              hrs · {event.participantCount} participant
+                              {event.participantCount === 1 ? "" : "s"}
+                            </small>
+                          </button>
                         );
                       }
 
@@ -634,6 +806,13 @@ export default function OperationalCalendarPage() {
           currentUser={currentUser}
           onClose={() => setSelectedTaskId(null)}
           onChanged={loadCalendar}
+        />
+      )}
+
+      {selectedHistory && (
+        <HistoricalWorkModal
+          event={selectedHistory}
+          onClose={() => setSelectedHistory(null)}
         />
       )}
     </>

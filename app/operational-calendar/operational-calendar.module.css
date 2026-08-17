@@ -478,3 +478,91 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Historical work import */
+.summaryGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.historySummaryCard strong {
+  color: #a99cff;
+}
+
+.historyLegend {
+  background: #8c79ff;
+}
+
+.historicalEvent {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(140, 121, 255, .32);
+  border-left: 3px solid #8c79ff;
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, rgba(140, 121, 255, .08), transparent),
+    #121624;
+  padding: 6px 7px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.historicalEvent:hover {
+  border-color: rgba(169, 156, 255, .7);
+  transform: translateY(-1px);
+}
+
+.historicalEvent > span {
+  display: block;
+  overflow: hidden;
+  color: #a99cff;
+  font-family:
+    "SFMono-Regular",
+    "Cascadia Mono",
+    Consolas,
+    monospace;
+  font-size: 6.5px;
+  font-weight: 900;
+  letter-spacing: .07em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historicalEvent > strong {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #f0eefc;
+  font-size: 9px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historicalEvent > small {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #918aa8;
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1250px) {
+  .summaryGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+  .summaryGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
