@@ -312,6 +312,57 @@ export function TaskDetailModal({
     }
   }
 
+  async function deleteTask() {
+    if (!currentUser) {
+      setMessage("Select yourself under Working As before deleting a task.");
+      return;
+    }
+
+    if (!canReview) {
+      setMessage(
+        "Only a captain, mentor, or coach can permanently delete a task."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Permanently delete "${task?.title ?? "this task"}"?\n\n` +
+        "This will also remove its live assignments, subtasks, planned hours, " +
+        "actual time entries, and activity history.\n\n" +
+        "Historical spreadsheet records are NOT affected."
+    );
+
+    if (!confirmed) return;
+
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor_member_id: currentUser.id,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to delete task.");
+      }
+
+      await onChanged();
+      onClose();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to delete task."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveDetails(event: FormEvent) {
     event.preventDefault();
 
@@ -861,12 +912,25 @@ export function TaskDetailModal({
               )}
 
               <div className={styles.saveBar}>
+                <div className={styles.saveBarLeft}>
+                  {canReview && (
+                    <button
+                      className={styles.deleteTask}
+                      type="button"
+                      disabled={busy}
+                      onClick={deleteTask}
+                    >
+                      Delete Task
+                    </button>
+                  )}
+                </div>
+
                 <button
                   className={styles.save}
                   type="submit"
                   disabled={!currentUser || busy}
                 >
-                  {busy ? "Saving…" : "Save Task"}
+                  {busy ? "Working…" : "Save Task"}
                 </button>
               </div>
             </form>

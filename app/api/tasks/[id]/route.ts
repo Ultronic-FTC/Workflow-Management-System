@@ -1114,3 +1114,73 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 }
+
+export async function DELETE(request: Request, context: RouteContext) {
+  if (!(await hasTeamAccess())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const { id } = await context.params;
+    const body = (await request.json().catch(() => ({}))) as {
+      actor_member_id?: string | null;
+    };
+
+    const supabase = createAdminClient();
+    const actor = await getActor(supabase, body.actor_member_id);
+
+    if (!actor) {
+      return NextResponse.json(
+        { error: "Select yourself under Working As before deleting a task." },
+        { status: 400 }
+      );
+    }
+
+    if (!reviewerRoles.has(actor.role)) {
+      return NextResponse.json(
+        {
+          error:
+            "Only a captain, mentor, or coach can permanently delete a task.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const { data: existingTask, error: existingError } = await supabase
+      .from("tasks")
+      .select("id, title, project_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    if (!existingTask) {
+      return NextResponse.json({ error: "Task not found." }, { status: 404 });
+    }
+
+    const { error: deleteError } = await supabase.rpc(
+      "delete_task_permanently",
+      { p_task_id: id }
+    );
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      message: "Task deleted.",
+      deleted_task_id: id,
+      deleted_task_title: existingTask.title,
+    });
+  } catch (error) {
+    console.error("Task DELETE failed:", error);
+
+    return NextResponse.json(
+      { error: "Unable to delete task." },
+      { status: 500 }
+    );
+  }
+}
