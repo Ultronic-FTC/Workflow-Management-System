@@ -420,12 +420,23 @@ export default function TeamBoardPage() {
           <h1>Team Board</h1>
           <p>Everything the team is working on, in one place.</p>
         </div>
-        <button
-          className={`primary-button ${styles.pageNewTask}`}
-          onClick={() => openNewTask()}
-        >
-          + New Task
-        </button>
+        <div className={styles.exportActions}>
+          <a
+            className={styles.exportButton}
+            href="/api/export/work-log"
+            download
+          >
+            ↓ Export Work Log
+          </a>
+
+          <a
+            className={styles.exportButton}
+            href="/api/export/roster"
+            download
+          >
+            ↓ Export Roster
+          </a>
+        </div>
       </div>
 
       {hydrated && !currentUser && (
