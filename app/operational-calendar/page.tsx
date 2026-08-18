@@ -166,7 +166,6 @@ function statusLabel(status: TaskStatus) {
     assigned: "Assigned",
     in_progress: "In Progress",
     blocked: "Blocked",
-    ready_for_review: "Ready for Review",
     completed: "Completed",
   };
 
