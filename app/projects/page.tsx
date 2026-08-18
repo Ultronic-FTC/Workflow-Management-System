@@ -52,6 +52,7 @@ export default function ProjectsPage() {
   const [divisionFilter, setDivisionFilter] =
     useState<DivisionFilter>("all");
   const [showNewProject, setShowNewProject] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -138,15 +139,29 @@ export default function ProjectsPage() {
 
   function openNewProject() {
     resetForm();
+    setEditingProject(null);
     setShowNewProject(true);
   }
 
-  async function createProject(event: FormEvent) {
+  function openEditProject(project: Project) {
+    setName(project.name);
+    setDescription(project.description ?? "");
+    setDivision(project.division);
+    setStatus(project.status);
+    setLeadMemberId(project.lead_member_id ?? "");
+    setTargetDate(project.target_date ?? "");
+    setFormError("");
+    setEditingProject(project);
+  }
+
+  async function saveProject(event: FormEvent) {
     event.preventDefault();
 
     if (!currentUser) {
       setFormError(
-        "Select yourself under Working As before creating a project."
+        `Select yourself under Working As before ${
+          editingProject ? "editing" : "creating"
+        } a project.`
       );
       return;
     }
@@ -161,38 +176,49 @@ export default function ProjectsPage() {
 
     try {
       const response = await fetch("/api/projects", {
-        method: "POST",
+        method: editingProject ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          ...(editingProject ? { id: editingProject.id } : {}),
           name: name.trim(),
           description: description.trim() || null,
           division,
           status,
           lead_member_id: leadMemberId || null,
           target_date: targetDate || null,
-          created_by_member_id: currentUser.id,
+          ...(editingProject
+            ? { actor_member_id: currentUser.id }
+            : { created_by_member_id: currentUser.id }),
         }),
       });
 
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to create project.");
+        throw new Error(
+          payload.error ??
+            `Unable to ${editingProject ? "update" : "create"} project.`
+        );
       }
 
       setShowNewProject(false);
+      setEditingProject(null);
       resetForm();
       await loadProjects();
     } catch (error) {
       setFormError(
-        error instanceof Error ? error.message : "Unable to create project."
+        error instanceof Error
+          ? error.message
+          : `Unable to ${editingProject ? "update" : "create"} project.`
       );
     } finally {
       setSaving(false);
     }
   }
+
+
 
   return (
     <>
@@ -285,7 +311,7 @@ export default function ProjectsPage() {
 
             return (
               <article
-                className={`project-card ${
+                className={`project-card ${styles.editableProjectCard} ${
                   visualDivision === "operational"
                     ? "operational"
                     : visualDivision === "both"
@@ -293,10 +319,23 @@ export default function ProjectsPage() {
                       : ""
                 }`}
                 key={project.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => openEditProject(project)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openEditProject(project);
+                  }
+                }}
+                title="Click to edit project"
               >
                 <div className="project-top">
                   <span>{titleCase(project.division)}</span>
-                  <strong>{project.progress}%</strong>
+                  <div className={styles.projectTopRight}>
+                    <small>EDIT</small>
+                    <strong>{project.progress}%</strong>
+                  </div>
                 </div>
 
                 <h2>{project.name}</h2>
@@ -359,34 +398,43 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {showNewProject && (
+      {(showNewProject || editingProject) && (
         <div
           className={styles.overlay}
           role="presentation"
           onMouseDown={(event) => {
             if (event.currentTarget === event.target && !saving) {
               setShowNewProject(false);
+              setEditingProject(null);
             }
           }}
         >
           <form
             className={styles.modal}
-            onSubmit={createProject}
-            aria-label="Create new project"
+            onSubmit={saveProject}
+            aria-label={editingProject ? "Edit project" : "Create new project"}
           >
             <div className={styles.modalHeader}>
               <div>
-                <p className="eyebrow">NEW WORKSTREAM</p>
-                <h2>Create Project</h2>
+                <p className="eyebrow">
+                  {editingProject ? "EDIT WORKSTREAM" : "NEW WORKSTREAM"}
+                </p>
+                <h2>{editingProject ? "Edit Project" : "Create Project"}</h2>
                 <p>
-                  Projects group related tasks into a major body of team work.
+                  {editingProject
+                    ? "Update this project's name, owner, dates, status, or description."
+                    : "Projects group related tasks into a major body of team work."}
                 </p>
               </div>
 
               <button
                 type="button"
                 className={styles.close}
-                onClick={() => setShowNewProject(false)}
+                onClick={() => {
+                  setShowNewProject(false);
+                  setEditingProject(null);
+                  resetForm();
+                }}
                 disabled={saving}
                 aria-label="Close"
               >
@@ -493,7 +541,11 @@ export default function ProjectsPage() {
               <button
                 className="ghost-button"
                 type="button"
-                onClick={() => setShowNewProject(false)}
+                onClick={() => {
+                  setShowNewProject(false);
+                  setEditingProject(null);
+                  resetForm();
+                }}
                 disabled={saving}
               >
                 Cancel
@@ -504,7 +556,13 @@ export default function ProjectsPage() {
                 type="submit"
                 disabled={saving || !currentUser}
               >
-                {saving ? "Creating…" : "Create Project"}
+                {saving
+                  ? editingProject
+                    ? "Saving…"
+                    : "Creating…"
+                  : editingProject
+                    ? "Save Changes"
+                    : "Create Project"}
               </button>
             </div>
           </form>
