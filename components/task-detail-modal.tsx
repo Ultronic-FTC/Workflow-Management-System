@@ -180,7 +180,6 @@ export function TaskDetailModal({
   const [priority, setPriority] = useState<
     "low" | "normal" | "high" | "critical"
   >("normal");
-  const [difficulty, setDifficulty] = useState("");
   const [peopleNeeded, setPeopleNeeded] = useState("1");
   const [estimateHours, setEstimateHours] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -223,7 +222,6 @@ export function TaskDetailModal({
       setProjectId(detail.project_id);
       setCategoryId(detail.category_id);
       setPriority(detail.priority);
-      setDifficulty(detail.difficulty ? String(detail.difficulty) : "");
       setPeopleNeeded(String(detail.people_needed));
       setEstimateHours(
         detail.estimated_minutes == null
@@ -376,7 +374,6 @@ export function TaskDetailModal({
       project_id: projectId,
       category_id: categoryId,
       priority,
-      difficulty: difficulty ? Number(difficulty) : null,
       people_needed: Number(peopleNeeded),
       estimated_minutes: estimate,
       deadline: deadline
@@ -748,20 +745,7 @@ export function TaskDetailModal({
                     </select>
                   </label>
 
-                  <label className={styles.field}>
-                    Difficulty
-                    <select
-                      value={difficulty}
-                      onChange={(event) => setDifficulty(event.target.value)}
-                    >
-                      <option value="">Not set</option>
-                      <option value="1">1 · Very Easy</option>
-                      <option value="2">2 · Easy</option>
-                      <option value="3">3 · Moderate</option>
-                      <option value="4">4 · Difficult</option>
-                      <option value="5">5 · Advanced</option>
-                    </select>
-                  </label>
+                  
 
                   <label className={styles.field}>
                     Deadline

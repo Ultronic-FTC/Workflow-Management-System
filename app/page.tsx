@@ -33,7 +33,6 @@ type Task = {
   description: string | null;
   status: TaskStatus;
   priority: "low" | "normal" | "high" | "critical";
-  difficulty: number | null;
   people_needed: number;
   estimated_minutes: number | null;
   deadline: string | null;
@@ -169,7 +168,6 @@ export default function TeamBoardPage() {
   const [priority, setPriority] = useState<
     "low" | "normal" | "high" | "critical"
   >("normal");
-  const [difficulty, setDifficulty] = useState("");
   const [peopleNeeded, setPeopleNeeded] = useState("1");
   const [estimatedMinutes, setEstimatedMinutes] = useState("");
   const [deadline, setDeadline] = useState("");
@@ -248,7 +246,6 @@ export default function TeamBoardPage() {
     setProjectId("");
     setCategoryId("");
     setPriority("normal");
-    setDifficulty("");
     setPeopleNeeded("1");
     setEstimatedMinutes("");
     setDeadline("");
@@ -282,7 +279,6 @@ export default function TeamBoardPage() {
           project_id: projectId,
           category_id: categoryId,
           priority,
-          difficulty: difficulty ? Number(difficulty) : null,
           people_needed: Number(peopleNeeded),
           estimated_minutes: estimatedMinutes
             ? Number(estimatedMinutes)
@@ -787,20 +783,7 @@ export default function TeamBoardPage() {
                   </select>
                 </label>
 
-                <label>
-                  Difficulty
-                  <select
-                    value={difficulty}
-                    onChange={(event) => setDifficulty(event.target.value)}
-                  >
-                    <option value="">Not set</option>
-                    <option value="1">1 · Very Easy</option>
-                    <option value="2">2 · Easy</option>
-                    <option value="3">3 · Moderate</option>
-                    <option value="4">4 · Difficult</option>
-                    <option value="5">5 · Advanced</option>
-                  </select>
-                </label>
+                
 
                 <label>
                   People Needed
