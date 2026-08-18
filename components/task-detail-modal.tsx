@@ -406,45 +406,30 @@ export function TaskDetailModal({
 
     if (!task) return;
 
-    const entries = task.assignees
-      .map((member) => {
-        const raw = (timeHoursByMember[member.member_id] ?? "").trim();
+    const validEntries: Array<{
+      member_id: string;
+      minutes: number;
+    }> = [];
 
-        if (!raw) return null;
+    for (const member of task.assignees) {
+      const raw = (timeHoursByMember[member.member_id] ?? "").trim();
 
-        const hours = Number(raw);
+      if (!raw) continue;
 
-        if (!Number.isFinite(hours) || hours < 0) {
-          return { invalid: true, member };
-        }
+      const hours = Number(raw);
 
-        if (hours === 0) return null;
+      if (!Number.isFinite(hours) || hours < 0) {
+        setMessage(`Enter a valid number of hours for ${member.name}.`);
+        return;
+      }
 
-        return {
-          member_id: member.member_id,
-          minutes: Math.round(hours * 60),
-        };
+      if (hours === 0) continue;
+
+      validEntries.push({
+        member_id: member.member_id,
+        minutes: Math.round(hours * 60),
       });
-
-    const invalidEntry = entries.find(
-      (entry) => entry && "invalid" in entry
-    );
-
-    if (invalidEntry && "member" in invalidEntry) {
-      setMessage(
-        `Enter a valid number of hours for ${invalidEntry.member.name}.`
-      );
-      return;
     }
-
-    const validEntries = entries.filter(
-      (
-        entry
-      ): entry is {
-        member_id: string;
-        minutes: number;
-      } => Boolean(entry && "member_id" in entry)
-    );
 
     if (validEntries.length === 0) {
       setMessage("Enter hours for at least one assigned person.");
