@@ -193,7 +193,9 @@ export function TaskDetailModal({
 
   const [newSubtask, setNewSubtask] = useState("");
 
-  const [logHours, setLogHours] = useState("");
+  const [timeHoursByMember, setTimeHoursByMember] = useState<
+    Record<string, string>
+  >({});
   const [logDate, setLogDate] = useState(
     () => new Date().toISOString().slice(0, 10)
   );
@@ -248,6 +250,11 @@ export function TaskDetailModal({
       setLeadMemberId(detail.lead_member_id ?? "");
       setPocMemberId(detail.poc_member_id ?? "");
       setAssigneeIds(detail.assignees.map((member) => member.member_id));
+      setTimeHoursByMember(
+        Object.fromEntries(
+          detail.assignees.map((member) => [member.member_id, ""])
+        )
+      );
       setEvidenceRequired(detail.evidence_required);
       setEvidenceType(detail.evidence_type ?? "");
       setEvidenceLocation(detail.evidence_location ?? "");
@@ -283,6 +290,17 @@ export function TaskDetailModal({
 
     const done = task.subtasks.filter((item) => item.completed).length;
     return `${done} / ${task.subtasks.length}`;
+  }, [task]);
+
+  const loggedMinutesByMember = useMemo(() => {
+    const totals: Record<string, number> = {};
+
+    for (const entry of task?.time_entries ?? []) {
+      totals[entry.member_id] =
+        (totals[entry.member_id] ?? 0) + Number(entry.minutes || 0);
+    }
+
+    return totals;
   }, [task]);
 
   async function requestAction(
@@ -424,19 +442,64 @@ export function TaskDetailModal({
   async function logTime(event: FormEvent) {
     event.preventDefault();
 
-    const hours = Number(logHours);
-    if (!Number.isFinite(hours) || hours <= 0) {
-      setMessage("Enter the amount of time worked.");
+    if (!task) return;
+
+    const entries = task.assignees
+      .map((member) => {
+        const raw = (timeHoursByMember[member.member_id] ?? "").trim();
+
+        if (!raw) return null;
+
+        const hours = Number(raw);
+
+        if (!Number.isFinite(hours) || hours < 0) {
+          return { invalid: true, member };
+        }
+
+        if (hours === 0) return null;
+
+        return {
+          member_id: member.member_id,
+          minutes: Math.round(hours * 60),
+        };
+      });
+
+    const invalidEntry = entries.find(
+      (entry) => entry && "invalid" in entry
+    );
+
+    if (invalidEntry && "member" in invalidEntry) {
+      setMessage(
+        `Enter a valid number of hours for ${invalidEntry.member.name}.`
+      );
       return;
     }
 
-    await requestAction("log_time", {
-      minutes: Math.round(hours * 60),
+    const validEntries = entries.filter(
+      (
+        entry
+      ): entry is {
+        member_id: string;
+        minutes: number;
+      } => Boolean(entry && "member_id" in entry)
+    );
+
+    if (validEntries.length === 0) {
+      setMessage("Enter hours for at least one assigned person.");
+      return;
+    }
+
+    await requestAction("log_time_batch", {
+      time_entries: validEntries,
       work_date: logDate,
       note: logNote,
     });
 
-    setLogHours("");
+    setTimeHoursByMember(
+      Object.fromEntries(
+        task.assignees.map((member) => [member.member_id, ""])
+      )
+    );
     setLogNote("");
   }
 
@@ -988,50 +1051,111 @@ export function TaskDetailModal({
               </div>
 
               <section className={styles.section}>
-                <h3>Log Actual Time</h3>
-
-                <form onSubmit={logTime}>
-                  <div className={styles.formGrid3}>
-                    <label className={styles.field}>
-                      Hours Worked
-                      <input
-                        type="number"
-                        min="0.25"
-                        step="0.25"
-                        value={logHours}
-                        onChange={(event) => setLogHours(event.target.value)}
-                        placeholder="e.g. 1.5"
-                      />
-                    </label>
-
-                    <label className={styles.field}>
-                      Date
-                      <input
-                        type="date"
-                        value={logDate}
-                        onChange={(event) => setLogDate(event.target.value)}
-                      />
-                    </label>
-
-                    <label className={styles.field}>
-                      Note
-                      <input
-                        value={logNote}
-                        onChange={(event) => setLogNote(event.target.value)}
-                        placeholder="What did you work on?"
-                      />
-                    </label>
+                <div className={styles.timeEntryHeading}>
+                  <div>
+                    <h3>Log Actual Time</h3>
+                    <p>
+                      Enter hours for everyone who worked on this task. One
+                      person can submit the whole group.
+                    </p>
                   </div>
 
-                  <div style={{ marginTop: 10 }}>
-                    <button
-                      className={styles.action}
-                      disabled={!currentUser || busy || !logHours}
-                    >
-                      Log Time
-                    </button>
+                  <label className={styles.compactDate}>
+                    Work Date
+                    <input
+                      type="date"
+                      value={logDate}
+                      onChange={(event) => setLogDate(event.target.value)}
+                    />
+                  </label>
+                </div>
+
+                {task.assignees.length === 0 ? (
+                  <div className={styles.notice}>
+                    Assign people to this task before logging time.
                   </div>
-                </form>
+                ) : (
+                  <form onSubmit={logTime}>
+                    <div className={styles.timeSheet}>
+                      <div className={styles.timeSheetHeader}>
+                        <span>Person</span>
+                        <span>Hours Worked</span>
+                        <span>Total Logged</span>
+                      </div>
+
+                      {task.assignees.map((member) => (
+                        <div
+                          className={styles.timeSheetRow}
+                          key={member.member_id}
+                        >
+                          <div className={styles.timeSheetPerson}>
+                            <strong>{member.name}</strong>
+                            <span>
+                              {titleCase(member.role)}
+                              {task.lead_member_id === member.member_id
+                                ? " · Lead"
+                                : ""}
+                            </span>
+                          </div>
+
+                          <input
+                            className={styles.hoursCell}
+                            type="number"
+                            min="0"
+                            max="24"
+                            step="0.25"
+                            value={
+                              timeHoursByMember[member.member_id] ?? ""
+                            }
+                            onChange={(event) =>
+                              setTimeHoursByMember((current) => ({
+                                ...current,
+                                [member.member_id]: event.target.value,
+                              }))
+                            }
+                            placeholder="0"
+                            aria-label={`Hours worked by ${member.name}`}
+                          />
+
+                          <div className={styles.totalCell}>
+                            {formatMinutes(
+                              loggedMinutesByMember[member.member_id] ?? 0
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className={styles.batchTimeFooter}>
+                      <label className={styles.batchNote}>
+                        Optional Note
+                        <input
+                          value={logNote}
+                          onChange={(event) => setLogNote(event.target.value)}
+                          placeholder="What did the group work on?"
+                        />
+                      </label>
+
+                      <button
+                        className={styles.action}
+                        disabled={
+                          !currentUser ||
+                          busy ||
+                          task.assignees.length === 0
+                        }
+                      >
+                        {busy ? "Saving…" : "Save Everyone's Hours"}
+                      </button>
+                    </div>
+
+                    {!currentUser && (
+                      <div className={styles.timeEntryHint}>
+                        Select yourself under Working As. You can still enter
+                        hours for any assigned person.
+                      </div>
+                    )}
+                  </form>
+                )}
               </section>
 
               <section className={styles.section}>

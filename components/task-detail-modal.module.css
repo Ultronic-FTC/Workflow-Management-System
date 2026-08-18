@@ -548,3 +548,187 @@
   cursor: not-allowed;
   opacity: .45;
 }
+
+
+/* ============================================================
+   BUILD 2X — GROUP ACTUAL-TIME SPREADSHEET
+   ============================================================ */
+
+.timeEntryHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 13px;
+}
+
+.timeEntryHeading h3 {
+  margin: 0;
+}
+
+.timeEntryHeading p {
+  margin: 5px 0 0;
+  color: #8e9bab;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.compactDate {
+  display: flex;
+  flex: 0 0 180px;
+  flex-direction: column;
+  gap: 5px;
+  color: #a8b3c1;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.compactDate input {
+  min-height: 38px;
+}
+
+.timeSheet {
+  overflow: hidden;
+  border: 1px solid #33404f;
+  border-radius: 9px;
+  background: #0b1118;
+}
+
+.timeSheetHeader,
+.timeSheetRow {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.6fr) minmax(145px, .8fr) minmax(135px, .7fr);
+  align-items: center;
+}
+
+.timeSheetHeader {
+  min-height: 34px;
+  border-bottom: 1px solid #33404f;
+  background: #121b25;
+}
+
+.timeSheetHeader span {
+  padding: 8px 12px;
+  color: #8795a6;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .075em;
+}
+
+.timeSheetHeader span + span,
+.timeSheetRow > * + * {
+  border-left: 1px solid #2c3744;
+}
+
+.timeSheetRow {
+  min-height: 54px;
+  border-bottom: 1px solid #27323e;
+}
+
+.timeSheetRow:last-child {
+  border-bottom: 0;
+}
+
+.timeSheetPerson {
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.timeSheetPerson strong,
+.timeSheetPerson span {
+  display: block;
+}
+
+.timeSheetPerson strong {
+  color: #edf1f5;
+  font-size: 11px;
+}
+
+.timeSheetPerson span {
+  margin-top: 2px;
+  color: #7f8c9c;
+  font-size: 8px;
+}
+
+.hoursCell {
+  width: calc(100% - 18px);
+  min-height: 38px;
+  margin: 8px 9px;
+  border: 1px solid #425163 !important;
+  border-radius: 6px !important;
+  background: #080d13 !important;
+  color: #f1f5f7 !important;
+  padding: 8px 10px !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+  text-align: right;
+}
+
+.hoursCell:focus {
+  border-color: #2bd0dc !important;
+  outline: none;
+}
+
+.totalCell {
+  padding: 10px 12px;
+  color: #2bd0dc;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.batchTimeFooter {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.batchNote {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: #a8b3c1;
+  font-size: 9px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.batchNote input {
+  min-height: 40px;
+}
+
+.timeEntryHint {
+  margin-top: 8px;
+  color: #8d99a8;
+  font-size: 9px;
+}
+
+@media (max-width: 700px) {
+  .timeEntryHeading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .compactDate {
+    flex-basis: auto;
+  }
+
+  .timeSheet {
+    overflow-x: auto;
+  }
+
+  .timeSheetHeader,
+  .timeSheetRow {
+    min-width: 560px;
+  }
+
+  .batchTimeFooter {
+    grid-template-columns: 1fr;
+  }
+}

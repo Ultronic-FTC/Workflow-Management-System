@@ -76,6 +76,10 @@ type UpdateBody = {
   minutes?: number;
   work_date?: string;
   note?: string | null;
+  time_entries?: Array<{
+    member_id: string;
+    minutes: number;
+  }>;
 };
 
 const reviewerRoles = new Set(["captain", "mentor", "coach"]);
@@ -806,9 +810,102 @@ export async function PATCH(request: Request, context: RouteContext) {
       await addActivity(supabase, id, actor.id, "deleted_subtask", {
         subtask_id: body.subtask_id,
       });
+    } else if (action === "log_time_batch") {
+      const workDate =
+        body.work_date || new Date().toISOString().slice(0, 10);
+      const requestedEntries = Array.isArray(body.time_entries)
+        ? body.time_entries
+        : [];
+
+      if (requestedEntries.length === 0) {
+        return NextResponse.json(
+          { error: "Enter hours for at least one assigned person." },
+          { status: 400 }
+        );
+      }
+
+      const normalizedEntries = requestedEntries.map((entry) => ({
+        member_id: String(entry.member_id ?? ""),
+        minutes: Number(entry.minutes ?? 0),
+      }));
+
+      const invalidEntry = normalizedEntries.find(
+        (entry) =>
+          !entry.member_id ||
+          !Number.isInteger(entry.minutes) ||
+          entry.minutes <= 0 ||
+          entry.minutes > 1440
+      );
+
+      if (invalidEntry) {
+        return NextResponse.json(
+          {
+            error:
+              "Each person's logged time must be between 1 minute and 24 hours.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const memberIds = normalizedEntries.map((entry) => entry.member_id);
+
+      if (new Set(memberIds).size !== memberIds.length) {
+        return NextResponse.json(
+          { error: "Each person can appear only once in a time submission." },
+          { status: 400 }
+        );
+      }
+
+      const { data: assignmentRows, error: assignmentError } = await supabase
+        .from("task_assignments")
+        .select("member_id")
+        .eq("task_id", id)
+        .in("member_id", memberIds);
+
+      if (assignmentError) throw assignmentError;
+
+      const assignedIds = new Set(
+        (assignmentRows ?? []).map((row) => row.member_id)
+      );
+
+      const unassignedId = memberIds.find(
+        (memberId) => !assignedIds.has(memberId)
+      );
+
+      if (unassignedId) {
+        return NextResponse.json(
+          {
+            error:
+              "Hours can only be entered for people currently assigned to this task.",
+          },
+          { status: 400 }
+        );
+      }
+
+      const note = body.note?.trim() || null;
+
+      const { error } = await supabase.from("time_entries").insert(
+        normalizedEntries.map((entry) => ({
+          task_id: id,
+          member_id: entry.member_id,
+          work_date: workDate,
+          minutes: entry.minutes,
+          note,
+        }))
+      );
+
+      if (error) throw error;
+
+      await addActivity(supabase, id, actor.id, "logged_time", {
+        work_date: workDate,
+        entries: normalizedEntries,
+        entry_count: normalizedEntries.length,
+      });
     } else if (action === "log_time") {
+      // Kept for backward compatibility with any older client.
       const minutes = Number(body.minutes ?? 0);
-      const workDate = body.work_date || new Date().toISOString().slice(0, 10);
+      const workDate =
+        body.work_date || new Date().toISOString().slice(0, 10);
 
       if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 1440) {
         return NextResponse.json(
