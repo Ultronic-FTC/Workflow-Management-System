@@ -127,6 +127,27 @@ function formatMinutes(minutes: number | null | undefined) {
 function formatDate(value: string | null | undefined) {
   if (!value) return "Not set";
 
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(
+      new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        12,
+        0,
+        0
+      )
+    );
+  }
+
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
