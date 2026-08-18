@@ -750,3 +750,129 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+/* ============================================================
+   BUILD 2Z — EDITABLE TIME HISTORY
+   ============================================================ */
+
+.timeRow {
+  grid-template-columns: minmax(155px, .8fr) minmax(180px, 1.5fr) 90px 62px;
+}
+
+.timeEditButton {
+  justify-self: end;
+  border: 1px solid #3a4757;
+  border-radius: 7px;
+  background: #111923;
+  color: #dfe5eb;
+  padding: 7px 11px;
+  font-size: 8px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.timeEditButton:hover:not(:disabled) {
+  border-color: #2bd0dc;
+  color: #2bd0dc;
+}
+
+.timeEditButton:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.timeEditRow {
+  display: grid;
+  grid-template-columns:
+    minmax(155px, 1fr)
+    minmax(145px, .8fr)
+    minmax(110px, .55fr)
+    minmax(210px, 1.25fr)
+    auto;
+  gap: 9px;
+  align-items: end;
+  border: 1px solid #2bd0dc;
+  border-radius: 9px;
+  background: #0d171e;
+  padding: 11px;
+}
+
+.timeEditRow + .timeEditRow,
+.timeEditRow + .timeRow,
+.timeRow + .timeEditRow {
+  margin-top: 8px;
+}
+
+.timeEditRow label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: #9eabb9;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.timeEditRow input,
+.timeEditRow select {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid #3e4c5d;
+  border-radius: 7px;
+  background: #080e14;
+  color: #eef2f6;
+  padding: 8px 9px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.timeEditNote {
+  min-width: 0;
+}
+
+.timeEditActions {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.timeEditActions button {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .timeEditRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .timeEditNote,
+  .timeEditActions {
+    grid-column: 1 / -1;
+  }
+
+  .timeEditActions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 650px) {
+  .timeRow {
+    grid-template-columns: 1fr auto;
+  }
+
+  .timeRow > .timeNote {
+    grid-column: 1 / -1;
+  }
+
+  .timeEditRow {
+    grid-template-columns: 1fr;
+  }
+
+  .timeEditNote,
+  .timeEditActions {
+    grid-column: auto;
+  }
+}

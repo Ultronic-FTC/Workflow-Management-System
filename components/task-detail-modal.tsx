@@ -180,6 +180,14 @@ export function TaskDetailModal({
   );
   const [logNote, setLogNote] = useState("");
 
+  const [editingTimeEntryId, setEditingTimeEntryId] = useState<string | null>(
+    null
+  );
+  const [editTimeMemberId, setEditTimeMemberId] = useState("");
+  const [editTimeHours, setEditTimeHours] = useState("");
+  const [editTimeDate, setEditTimeDate] = useState("");
+  const [editTimeNote, setEditTimeNote] = useState("");
+
   const loadTask = useCallback(async () => {
     setLoading(true);
     setMessage("");
@@ -448,6 +456,87 @@ export function TaskDetailModal({
       )
     );
     setLogNote("");
+  }
+
+  function startEditingTimeEntry(
+    entry: TaskDetail["time_entries"][number]
+  ) {
+    setEditingTimeEntryId(entry.id);
+    setEditTimeMemberId(entry.member_id);
+    setEditTimeHours(String(entry.minutes / 60));
+    setEditTimeDate(toDateInput(entry.work_date));
+    setEditTimeNote(entry.note ?? "");
+    setMessage("");
+  }
+
+  function cancelEditingTimeEntry() {
+    setEditingTimeEntryId(null);
+    setEditTimeMemberId("");
+    setEditTimeHours("");
+    setEditTimeDate("");
+    setEditTimeNote("");
+  }
+
+  async function saveTimeEntryEdit(event: FormEvent) {
+    event.preventDefault();
+
+    if (!currentUser) {
+      setMessage(
+        "Select yourself under Working As before editing logged time."
+      );
+      return;
+    }
+
+    if (!editingTimeEntryId) return;
+
+    const hours = Number(editTimeHours);
+
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      setMessage("Hours worked must be greater than 0 and no more than 24.");
+      return;
+    }
+
+    if (!editTimeDate) {
+      setMessage("Choose the work date.");
+      return;
+    }
+
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update_time_entry",
+          actor_member_id: currentUser.id,
+          time_entry_id: editingTimeEntryId,
+          time_entry_member_id: editTimeMemberId,
+          minutes: Math.round(hours * 60),
+          work_date: editTimeDate,
+          note: editTimeNote,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to update logged time.");
+      }
+
+      cancelEditingTimeEntry();
+      await loadTask();
+      await onChanged();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to update logged time."
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (loading) {
@@ -1042,24 +1131,122 @@ export function TaskDetailModal({
                     </div>
                   )}
 
-                  {task.time_entries.map((entry) => (
-                    <div className={styles.timeRow} key={entry.id}>
-                      <div className={styles.timeWho}>
-                        {entry.member_name}
-                        <div className={styles.timeNote}>
-                          {formatDate(entry.work_date)}
+                  {task.time_entries.map((entry) =>
+                    editingTimeEntryId === entry.id ? (
+                      <form
+                        className={styles.timeEditRow}
+                        key={entry.id}
+                        onSubmit={saveTimeEntryEdit}
+                      >
+                        <label>
+                          Person
+                          <select
+                            value={editTimeMemberId}
+                            onChange={(event) =>
+                              setEditTimeMemberId(event.target.value)
+                            }
+                          >
+                            {!task.assignees.some(
+                              (member) =>
+                                member.member_id === entry.member_id
+                            ) && (
+                              <option value={entry.member_id}>
+                                {entry.member_name}
+                              </option>
+                            )}
+
+                            {task.assignees.map((member) => (
+                              <option
+                                key={member.member_id}
+                                value={member.member_id}
+                              >
+                                {member.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label>
+                          Date
+                          <input
+                            type="date"
+                            value={editTimeDate}
+                            onChange={(event) =>
+                              setEditTimeDate(event.target.value)
+                            }
+                          />
+                        </label>
+
+                        <label>
+                          Hours
+                          <input
+                            type="number"
+                            min="0.25"
+                            max="24"
+                            step="0.25"
+                            value={editTimeHours}
+                            onChange={(event) =>
+                              setEditTimeHours(event.target.value)
+                            }
+                          />
+                        </label>
+
+                        <label className={styles.timeEditNote}>
+                          Note
+                          <input
+                            value={editTimeNote}
+                            onChange={(event) =>
+                              setEditTimeNote(event.target.value)
+                            }
+                            placeholder="Optional note"
+                          />
+                        </label>
+
+                        <div className={styles.timeEditActions}>
+                          <button
+                            type="button"
+                            className={styles.actionSecondary}
+                            onClick={cancelEditingTimeEntry}
+                            disabled={busy}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            className={styles.action}
+                            disabled={busy || !currentUser}
+                          >
+                            {busy ? "Saving…" : "Save Changes"}
+                          </button>
                         </div>
-                      </div>
+                      </form>
+                    ) : (
+                      <div className={styles.timeRow} key={entry.id}>
+                        <div className={styles.timeWho}>
+                          {entry.member_name}
+                          <div className={styles.timeNote}>
+                            {formatDate(entry.work_date)}
+                          </div>
+                        </div>
 
-                      <div className={styles.timeNote}>
-                        {entry.note || "No note"}
-                      </div>
+                        <div className={styles.timeNote}>
+                          {entry.note || "No note"}
+                        </div>
 
-                      <div className={styles.timeAmount}>
-                        {formatMinutes(entry.minutes)}
+                        <div className={styles.timeAmount}>
+                          {formatMinutes(entry.minutes)}
+                        </div>
+
+                        <button
+                          type="button"
+                          className={styles.timeEditButton}
+                          onClick={() => startEditingTimeEntry(entry)}
+                          disabled={busy}
+                        >
+                          Edit
+                        </button>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  )}
                 </div>
               </section>
             </>

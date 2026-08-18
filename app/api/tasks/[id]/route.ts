@@ -80,6 +80,9 @@ type UpdateBody = {
     member_id: string;
     minutes: number;
   }>;
+
+  time_entry_id?: string;
+  time_entry_member_id?: string;
 };
 
 const reviewerRoles = new Set(["captain", "mentor", "coach"]);
@@ -788,6 +791,106 @@ export async function PATCH(request: Request, context: RouteContext) {
 
       await addActivity(supabase, id, actor.id, "deleted_subtask", {
         subtask_id: body.subtask_id,
+      });
+    } else if (action === "update_time_entry") {
+      const timeEntryId = body.time_entry_id?.trim() ?? "";
+      const minutes = Number(body.minutes ?? 0);
+      const workDate = body.work_date?.trim() ?? "";
+
+      if (!timeEntryId) {
+        return NextResponse.json(
+          { error: "Time entry ID is required." },
+          { status: 400 }
+        );
+      }
+
+      if (!Number.isInteger(minutes) || minutes <= 0 || minutes > 1440) {
+        return NextResponse.json(
+          {
+            error:
+              "Logged time must be greater than 0 and no more than 24 hours.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) {
+        return NextResponse.json(
+          { error: "A valid work date is required." },
+          { status: 400 }
+        );
+      }
+
+      const { data: existingEntry, error: existingEntryError } =
+        await supabase
+          .from("time_entries")
+          .select("id, member_id, work_date, minutes, note")
+          .eq("id", timeEntryId)
+          .eq("task_id", id)
+          .maybeSingle();
+
+      if (existingEntryError) throw existingEntryError;
+
+      if (!existingEntry) {
+        return NextResponse.json(
+          { error: "Logged-time entry not found." },
+          { status: 404 }
+        );
+      }
+
+      const nextMemberId =
+        body.time_entry_member_id?.trim() || existingEntry.member_id;
+
+      if (nextMemberId !== existingEntry.member_id) {
+        const { data: assignment, error: assignmentError } = await supabase
+          .from("task_assignments")
+          .select("member_id")
+          .eq("task_id", id)
+          .eq("member_id", nextMemberId)
+          .maybeSingle();
+
+        if (assignmentError) throw assignmentError;
+
+        if (!assignment) {
+          return NextResponse.json(
+            {
+              error:
+                "Logged time can only be reassigned to someone currently assigned to this task.",
+            },
+            { status: 400 }
+          );
+        }
+      }
+
+      const nextNote = body.note?.trim() || null;
+
+      const { error: updateTimeError } = await supabase
+        .from("time_entries")
+        .update({
+          member_id: nextMemberId,
+          work_date: workDate,
+          minutes,
+          note: nextNote,
+        })
+        .eq("id", timeEntryId)
+        .eq("task_id", id);
+
+      if (updateTimeError) throw updateTimeError;
+
+      await addActivity(supabase, id, actor.id, "updated_time_entry", {
+        time_entry_id: timeEntryId,
+        previous: {
+          member_id: existingEntry.member_id,
+          work_date: existingEntry.work_date,
+          minutes: existingEntry.minutes,
+          note: existingEntry.note,
+        },
+        updated: {
+          member_id: nextMemberId,
+          work_date: workDate,
+          minutes,
+          note: nextNote,
+        },
       });
     } else if (action === "log_time_batch") {
       const workDate =
