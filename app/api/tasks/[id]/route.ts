@@ -86,7 +86,6 @@ const allowedStatuses = new Set([
   "assigned",
   "in_progress",
   "blocked",
-  "ready_for_review",
   "completed",
 ]);
 
@@ -671,10 +670,10 @@ export async function PATCH(request: Request, context: RouteContext) {
       if (error) throw error;
 
       await addActivity(supabase, id, actor.id, "resumed_work");
-    } else if (action === "submit_review") {
+    } else if (action === "complete") {
       if (existingTask.status !== "in_progress") {
         return NextResponse.json(
-          { error: "Only work in progress can be submitted for review." },
+          { error: "Only work in progress can be marked complete." },
           { status: 400 }
         );
       }
@@ -686,7 +685,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         return NextResponse.json(
           {
             error:
-              "This task requires evidence. Add the evidence location before submitting for review.",
+              "This task requires evidence. Add the evidence location before marking it complete.",
           },
           { status: 400 }
         );
@@ -707,42 +706,8 @@ export async function PATCH(request: Request, context: RouteContext) {
         return NextResponse.json(
           {
             error:
-              "Complete all subtasks before submitting this task for review.",
+              "Complete all subtasks before marking this task complete.",
           },
-          { status: 400 }
-        );
-      }
-
-      const { error } = await supabase
-        .from("tasks")
-        .update({
-          status: "ready_for_review",
-          submitted_for_review_at: new Date().toISOString(),
-          approved_by_member_id: null,
-          approved_at: null,
-          completed_at: null,
-          review_notes: null,
-          blocked_reason: null,
-        })
-        .eq("id", id);
-
-      if (error) throw error;
-
-      await addActivity(supabase, id, actor.id, "submitted_for_review");
-    } else if (action === "approve") {
-      if (!reviewerRoles.has(actor.role)) {
-        return NextResponse.json(
-          {
-            error:
-              "Only a captain, mentor, or coach can approve completed work.",
-          },
-          { status: 403 }
-        );
-      }
-
-      if (existingTask.status !== "ready_for_review") {
-        return NextResponse.json(
-          { error: "Only tasks in Ready for Review can be approved." },
           { status: 400 }
         );
       }
@@ -756,59 +721,15 @@ export async function PATCH(request: Request, context: RouteContext) {
           completed_at: now,
           approved_by_member_id: actor.id,
           approved_at: now,
-          review_notes: body.review_notes?.trim() || null,
+          submitted_for_review_at: null,
+          review_notes: null,
           blocked_reason: null,
         })
         .eq("id", id);
 
       if (error) throw error;
 
-      await addActivity(supabase, id, actor.id, "approved", {
-        note: body.review_notes?.trim() || null,
-      });
-    } else if (action === "return_for_changes") {
-      if (existingTask.status !== "ready_for_review") {
-        return NextResponse.json(
-          { error: "Only tasks in Ready for Review can be returned." },
-          { status: 400 }
-        );
-      }
-
-      if (!reviewerRoles.has(actor.role)) {
-        return NextResponse.json(
-          {
-            error:
-              "Only a captain, mentor, or coach can return reviewed work.",
-          },
-          { status: 403 }
-        );
-      }
-
-      const note = body.review_notes?.trim() ?? "";
-
-      if (!note) {
-        return NextResponse.json(
-          { error: "Please explain what needs to change." },
-          { status: 400 }
-        );
-      }
-
-      const { error } = await supabase
-        .from("tasks")
-        .update({
-          status: "in_progress",
-          review_notes: note,
-          approved_by_member_id: null,
-          approved_at: null,
-          completed_at: null,
-        })
-        .eq("id", id);
-
-      if (error) throw error;
-
-      await addActivity(supabase, id, actor.id, "returned_for_changes", {
-        note,
-      });
+      await addActivity(supabase, id, actor.id, "completed");
     } else if (action === "add_subtask") {
       const title = body.subtask_title?.trim() ?? "";
 
@@ -1031,30 +952,7 @@ export async function PATCH(request: Request, context: RouteContext) {
             },
           ],
         });
-      } else if (action === "submit_review") {
-        await sendDiscordNotification({
-          title: "👀 Ready for review",
-          description: `**${task.title}**`,
-          color: discordColors.yellow,
-          fields: [
-            {
-              name: "Project",
-              value: task.project_name,
-              inline: true,
-            },
-            {
-              name: "Submitted by",
-              value: actor.name,
-              inline: true,
-            },
-            {
-              name: "Lead",
-              value: task.lead_name ?? "Unassigned",
-              inline: true,
-            },
-          ],
-        });
-      } else if (action === "approve") {
+      } else if (action === "complete") {
         await sendDiscordNotification({
           title: "✅ Task completed",
           description: `**${task.title}**`,
@@ -1066,39 +964,9 @@ export async function PATCH(request: Request, context: RouteContext) {
               inline: true,
             },
             {
-              name: "Approved by",
+              name: "Completed by",
               value: actor.name,
               inline: true,
-            },
-            ...(task.review_notes
-              ? [
-                  {
-                    name: "Review note",
-                    value: task.review_notes,
-                  },
-                ]
-              : []),
-          ],
-        });
-      } else if (action === "return_for_changes") {
-        await sendDiscordNotification({
-          title: "↩️ Returned for changes",
-          description: `**${task.title}**`,
-          color: discordColors.red,
-          fields: [
-            {
-              name: "Project",
-              value: task.project_name,
-              inline: true,
-            },
-            {
-              name: "Reviewer",
-              value: actor.name,
-              inline: true,
-            },
-            {
-              name: "Changes requested",
-              value: task.review_notes || "See task review notes.",
             },
           ],
         });

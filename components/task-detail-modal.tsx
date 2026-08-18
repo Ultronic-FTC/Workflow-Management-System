@@ -38,7 +38,6 @@ type TaskDetail = {
     | "assigned"
     | "in_progress"
     | "blocked"
-    | "ready_for_review"
     | "completed";
   priority: "low" | "normal" | "high" | "critical";
   difficulty: number | null;
@@ -191,7 +190,6 @@ export function TaskDetailModal({
   const [evidenceLocation, setEvidenceLocation] = useState("");
 
   const [blockReason, setBlockReason] = useState("");
-  const [reviewNote, setReviewNote] = useState("");
 
   const [newSubtask, setNewSubtask] = useState("");
 
@@ -236,7 +234,6 @@ export function TaskDetailModal({
       setEvidenceType(detail.evidence_type ?? "");
       setEvidenceLocation(detail.evidence_location ?? "");
       setBlockReason(detail.blocked_reason ?? "");
-      setReviewNote(detail.review_notes ?? "");
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Unable to load task."
@@ -481,13 +478,11 @@ export function TaskDetailModal({
             <div className={styles.headerMeta}>
               <span
                 className={`${styles.pill} ${
-                  task.status === "ready_for_review"
-                    ? styles.reviewPill
-                    : task.status === "blocked"
-                      ? styles.blockedPill
-                      : task.status === "completed"
-                        ? styles.completedPill
-                        : ""
+                  task.status === "blocked"
+                    ? styles.blockedPill
+                    : task.status === "completed"
+                      ? styles.completedPill
+                      : ""
                 }`}
               >
                 {titleCase(task.status)}
@@ -557,11 +552,11 @@ export function TaskDetailModal({
             {task.status === "in_progress" && (
               <>
                 <button
-                  className={styles.actionReview}
+                  className={styles.actionApprove}
                   disabled={!currentUser || !isAssigned || busy}
-                  onClick={() => requestAction("submit_review")}
+                  onClick={() => requestAction("complete")}
                 >
-                  Send for Review
+                  Mark Complete
                 </button>
 
                 <div className={styles.inlineAction}>
@@ -601,53 +596,16 @@ export function TaskDetailModal({
               </>
             )}
 
-            {task.status === "ready_for_review" && (
-              <>
-                {canReview ? (
-                  <div className={styles.inlineAction}>
-                    <textarea
-                      value={reviewNote}
-                      onChange={(event) => setReviewNote(event.target.value)}
-                      placeholder="Optional approval note, or explain changes needed."
-                    />
-                    <button
-                      className={styles.actionApprove}
-                      disabled={busy}
-                      onClick={() =>
-                        requestAction("approve", {
-                          review_notes: reviewNote,
-                        })
-                      }
-                    >
-                      Approve & Complete
-                    </button>
-                    <button
-                      className={styles.actionDanger}
-                      disabled={busy || !reviewNote.trim()}
-                      onClick={() =>
-                        requestAction("return_for_changes", {
-                          review_notes: reviewNote,
-                        })
-                      }
-                    >
-                      Return for Changes
-                    </button>
-                  </div>
-                ) : (
-                  <div className={styles.notice}>
-                    Waiting for a captain, mentor, or coach to review this
-                    task.
-                  </div>
-                )}
-              </>
-            )}
-
             {task.status === "completed" && (
               <div className={styles.notice}>
-                Approved by{" "}
-                <strong>{task.approved_by_name ?? "Reviewer"}</strong>
-                {task.approved_at
-                  ? ` on ${formatDate(task.approved_at)}`
+                Completed
+                {task.approved_by_name ? (
+                  <>
+                    {" "}by <strong>{task.approved_by_name}</strong>
+                  </>
+                ) : null}
+                {task.completed_at
+                  ? ` on ${formatDate(task.completed_at)}`
                   : ""}
                 .
               </div>

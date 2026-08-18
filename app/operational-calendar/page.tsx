@@ -15,7 +15,6 @@ type TaskStatus =
   | "assigned"
   | "in_progress"
   | "blocked"
-  | "ready_for_review"
   | "completed";
 
 type Task = {
@@ -411,7 +410,6 @@ export default function OperationalCalendarPage() {
           if (event.type === "historical") return 8;
 
           if (event.status === "blocked") return 2;
-          if (event.status === "ready_for_review") return 3;
           if (event.priority === "critical") return 4;
           if (event.priority === "high") return 5;
           if (event.status === "completed") return 9;
@@ -634,9 +632,6 @@ export default function OperationalCalendarPage() {
           <i className={styles.blockedLegend} /> Blocked
         </span>
         <span>
-          <i className={styles.reviewLegend} /> Ready for Review
-        </span>
-        <span>
           <i className={styles.historyLegend} /> Historical Work
         </span>
       </div>
@@ -725,8 +720,6 @@ export default function OperationalCalendarPage() {
                       const eventClass =
                         event.status === "blocked"
                           ? styles.blockedEvent
-                          : event.status === "ready_for_review"
-                            ? styles.reviewEvent
                             : event.status === "completed"
                               ? styles.completedEvent
                               : event.priority === "critical" ||
