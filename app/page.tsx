@@ -1,91 +1,225 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { Metric } from "@/components/ui";
 import { useCurrentUser } from "@/components/current-user-provider";
-import styles from "./projects.module.css";
+import { TaskDetailModal } from "@/components/task-detail-modal";
+import styles from "./team-board.module.css";
 
-type Project = {
+type TaskStatus =
+  | "backlog"
+  | "needs_assignment"
+  | "assigned"
+  | "in_progress"
+  | "blocked"
+  | "ready_for_review"
+  | "completed";
+
+type Task = {
   id: string;
-  name: string;
+  project_id: string;
+  project_name: string;
+  project_division: "technical" | "operational" | "both";
+  category_id: string;
+  category_name: string;
+  category_division: "technical" | "operational";
+  title: string;
   description: string | null;
-  division: "technical" | "operational" | "both";
-  status: "planning" | "active" | "paused" | "completed";
+  status: TaskStatus;
+  priority: "low" | "normal" | "high" | "critical";
+  difficulty: number | null;
+  people_needed: number;
+  estimated_minutes: number | null;
+  deadline: string | null;
   lead_member_id: string | null;
   lead_name: string | null;
-  target_date: string | null;
-  task_count: number;
-  live_task_count: number;
-  completed_count: number;
-  blocked_count: number;
-  review_count: number;
-  progress: number;
-  historical_activity_count: number;
-  historical_hours: number;
-  historical_only: boolean;
+  poc_member_id: string | null;
+  poc_name: string | null;
+  assignee_ids: string[];
+  assignee_names: string[];
+  assigned_count: number;
 };
 
-type DivisionFilter = "all" | "technical" | "operational";
+type ProjectOption = {
+  id: string;
+  name: string;
+  division: "technical" | "operational" | "both";
+  status: string;
+};
 
-function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
+type CategoryOption = {
+  id: string;
+  name: string;
+  division: "technical" | "operational";
+  sort_order: number;
+};
 
-function formatTargetDate(value: string | null) {
-  if (!value) return "No target date";
+type CapacitySummary = {
+  available_minutes: number;
+  planned_minutes: number;
+  remaining_minutes: number;
+  over_capacity_count: number;
+};
 
-  const date = new Date(`${value}T12:00:00`);
+const boardColumns: { status: TaskStatus; label: string }[] = [
+  { status: "backlog", label: "Backlog" },
+  { status: "needs_assignment", label: "Needs Assignment" },
+  { status: "assigned", label: "Assigned" },
+  { status: "in_progress", label: "In Progress" },
+  { status: "blocked", label: "Blocked" },
+  { status: "ready_for_review", label: "Ready for Review" },
+];
+
+function formatDeadline(value: string | null) {
+  if (!value) {
+    return "No deadline";
+  }
 
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
-    year: "numeric",
-  }).format(date);
+  }).format(new Date(value));
 }
 
-export default function ProjectsPage() {
-  const { currentUser, teamMembers } = useCurrentUser();
+function formatEstimate(minutes: number | null) {
+  if (minutes == null) {
+    return "No estimate";
+  }
 
-  const [projects, setProjects] = useState<Project[]>([]);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = minutes / 60;
+  return Number.isInteger(hours) ? `${hours} hr${hours === 1 ? "" : "s"}` : `${hours.toFixed(1)} hrs`;
+}
+
+function isOverdue(task: Task) {
+  if (!task.deadline || task.status === "completed") {
+    return false;
+  }
+
+  return new Date(task.deadline).getTime() < Date.now();
+}
+
+function titleCase(value: string) {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function currentWeekStart() {
+  const date = new Date();
+  const value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const offset = (value.getDay() + 6) % 7;
+  value.setDate(value.getDate() - offset);
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function capacityHours(minutes: number) {
+  const value = minutes / 60;
+  return Number.isInteger(value) ? `${value} hrs` : `${value.toFixed(1)} hrs`;
+}
+
+export default function TeamBoardPage() {
+  const { currentUser, teamMembers, hydrated } = useCurrentUser();
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [capacitySummary, setCapacitySummary] = useState<CapacitySummary>({
+    available_minutes: 0,
+    planned_minutes: 0,
+    remaining_minutes: 0,
+    over_capacity_count: 0,
+  });
+  const [historicalCompletedCount, setHistoricalCompletedCount] = useState(0);
 
-  const [divisionFilter, setDivisionFilter] =
-    useState<DivisionFilter>("all");
-  const [showNewProject, setShowNewProject] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [personFilter, setPersonFilter] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [deadlineFilter, setDeadlineFilter] = useState("");
+  const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [needsPeopleOnly, setNeedsPeopleOnly] = useState(false);
+  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [blockedOnly, setBlockedOnly] = useState(false);
 
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [division, setDivision] = useState<
-    "technical" | "operational" | "both"
-  >("operational");
-  const [status, setStatus] = useState<
-    "planning" | "active" | "paused" | "completed"
-  >("active");
-  const [leadMemberId, setLeadMemberId] = useState("");
-  const [targetDate, setTargetDate] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
-  const [saving, setSaving] = useState(false);
 
-  const loadProjects = useCallback(async () => {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [priority, setPriority] = useState<
+    "low" | "normal" | "high" | "critical"
+  >("normal");
+  const [difficulty, setDifficulty] = useState("");
+  const [peopleNeeded, setPeopleNeeded] = useState("1");
+  const [estimatedMinutes, setEstimatedMinutes] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [leadMemberId, setLeadMemberId] = useState("");
+  const [pocMemberId, setPocMemberId] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+
+  const loadBoard = useCallback(async () => {
     setLoading(true);
-    setPageError("");
+    setLoadError("");
 
     try {
-      const response = await fetch("/api/projects", {
-        cache: "no-store",
-      });
+      const [taskResponse, capacityResponse, historyResponse] =
+        await Promise.all([
+          fetch("/api/tasks", { cache: "no-store" }),
+          fetch(`/api/capacity?week_start=${currentWeekStart()}`, {
+            cache: "no-store",
+          }),
+          fetch("/api/historical-work/summary", { cache: "no-store" }),
+        ]);
 
-      const payload = await response.json();
+      const taskPayload = await taskResponse.json();
+      const capacityPayload = await capacityResponse.json();
+      const historyPayload = await historyResponse.json();
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to load projects.");
+      if (!taskResponse.ok) {
+        throw new Error(taskPayload.error ?? "Unable to load team board.");
       }
 
-      setProjects(Array.isArray(payload.projects) ? payload.projects : []);
+      setTasks(Array.isArray(taskPayload.tasks) ? taskPayload.tasks : []);
+      setProjects(Array.isArray(taskPayload.projects) ? taskPayload.projects : []);
+      setCategories(Array.isArray(taskPayload.categories) ? taskPayload.categories : []);
+
+      if (capacityResponse.ok && capacityPayload.summary) {
+        setCapacitySummary({
+          available_minutes: capacityPayload.summary.available_minutes ?? 0,
+          planned_minutes: capacityPayload.summary.planned_minutes ?? 0,
+          remaining_minutes: capacityPayload.summary.remaining_minutes ?? 0,
+          over_capacity_count: capacityPayload.summary.over_capacity_count ?? 0,
+        });
+      }
+
+      if (historyResponse.ok) {
+        setHistoricalCompletedCount(
+          Number(historyPayload.historical_completed_count ?? 0)
+        );
+      }
     } catch (error) {
-      setPageError(
-        error instanceof Error ? error.message : "Unable to load projects."
+      setLoadError(
+        error instanceof Error ? error.message : "Unable to load team board."
       );
     } finally {
       setLoading(false);
@@ -93,479 +227,705 @@ export default function ProjectsPage() {
   }, []);
 
   useEffect(() => {
-    loadProjects();
-  }, [loadProjects]);
+    loadBoard();
+  }, [loadBoard]);
 
-  const visibleProjects = useMemo(() => {
-    const filtered = projects.filter((project) => {
-      if (divisionFilter === "all") return true;
+  useEffect(() => {
+    function handleNewTask() {
+      openNewTask();
+    }
 
-      return (
-        project.division === divisionFilter || project.division === "both"
-      );
-    });
+    window.addEventListener("ultronic:new-task", handleNewTask);
 
-    const statusRank = (project: Project) => {
-      if (project.status === "active") return 0;
-      if (project.status === "planning") return 1;
-      if (project.status === "paused") return 2;
-      return 3;
+    return () => {
+      window.removeEventListener("ultronic:new-task", handleNewTask);
     };
+  });
 
-    return [...filtered].sort((a, b) => {
-      const statusDifference = statusRank(a) - statusRank(b);
-      if (statusDifference !== 0) return statusDifference;
-
-      if (!a.target_date && !b.target_date) {
-        return a.name.localeCompare(b.name);
-      }
-
-      if (!a.target_date) return 1;
-      if (!b.target_date) return -1;
-
-      return a.target_date.localeCompare(b.target_date);
-    });
-  }, [projects, divisionFilter]);
-
-  function resetForm() {
-    setName("");
+  function openNewTask(defaultStatus?: TaskStatus) {
+    setTitle("");
     setDescription("");
-    setDivision("operational");
-    setStatus("active");
-    setLeadMemberId("");
-    setTargetDate("");
+    setProjectId("");
+    setCategoryId("");
+    setPriority("normal");
+    setDifficulty("");
+    setPeopleNeeded("1");
+    setEstimatedMinutes("");
+    setDeadline("");
+    setLeadMemberId(currentUser?.id ?? "");
+    setPocMemberId(currentUser?.id ?? "");
+    setAssigneeIds(currentUser?.id ? [currentUser.id] : []);
     setFormError("");
+    setShowModal(true);
   }
 
-  function openNewProject() {
-    resetForm();
-    setEditingProject(null);
-    setShowNewProject(true);
+  function toggleAssignee(memberId: string) {
+    setAssigneeIds((current) =>
+      current.includes(memberId)
+        ? current.filter((id) => id !== memberId)
+        : [...current, memberId]
+    );
   }
 
-  function openEditProject(project: Project) {
-    setName(project.name);
-    setDescription(project.description ?? "");
-    setDivision(project.division);
-    setStatus(project.status);
-    setLeadMemberId(project.lead_member_id ?? "");
-    setTargetDate(project.target_date ?? "");
-    setFormError("");
-    setEditingProject(project);
-  }
-
-  async function saveProject(event: FormEvent) {
+  async function submitTask(event: FormEvent) {
     event.preventDefault();
-
-    if (!currentUser) {
-      setFormError(
-        `Select yourself under Working As before ${
-          editingProject ? "editing" : "creating"
-        } a project.`
-      );
-      return;
-    }
-
-    if (name.trim().length < 2) {
-      setFormError("Project name must be at least 2 characters.");
-      return;
-    }
-
-    setSaving(true);
+    setSubmitting(true);
     setFormError("");
 
     try {
-      const response = await fetch("/api/projects", {
-        method: editingProject ? "PATCH" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(editingProject ? { id: editingProject.id } : {}),
-          name: name.trim(),
-          description: description.trim() || null,
-          division,
-          status,
+          title,
+          description,
+          project_id: projectId,
+          category_id: categoryId,
+          priority,
+          difficulty: difficulty ? Number(difficulty) : null,
+          people_needed: Number(peopleNeeded),
+          estimated_minutes: estimatedMinutes
+            ? Number(estimatedMinutes)
+            : null,
+          deadline: deadline
+            ? new Date(`${deadline}T23:59:00`).toISOString()
+            : null,
           lead_member_id: leadMemberId || null,
-          target_date: targetDate || null,
-          ...(editingProject
-            ? { actor_member_id: currentUser.id }
-            : { created_by_member_id: currentUser.id }),
+          poc_member_id: pocMemberId || null,
+          assignee_ids: assigneeIds,
+          created_by_member_id: currentUser?.id ?? null,
         }),
       });
 
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          payload.error ??
-            `Unable to ${editingProject ? "update" : "create"} project.`
-        );
+        throw new Error(payload.error ?? "Unable to create task.");
       }
 
-      setShowNewProject(false);
-      setEditingProject(null);
-      resetForm();
-      await loadProjects();
+      setShowModal(false);
+      await loadBoard();
     } catch (error) {
       setFormError(
-        error instanceof Error
-          ? error.message
-          : `Unable to ${editingProject ? "update" : "create"} project.`
+        error instanceof Error ? error.message : "Unable to create task."
       );
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   }
 
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (categoryFilter && task.category_id !== categoryFilter) return false;
+      if (projectFilter && task.project_id !== projectFilter) return false;
+      if (priorityFilter && task.priority !== priorityFilter) return false;
 
+      if (
+        personFilter &&
+        task.lead_member_id !== personFilter &&
+        !task.assignee_ids.includes(personFilter)
+      ) {
+        return false;
+      }
+
+      if (
+        myTasksOnly &&
+        currentUser &&
+        task.lead_member_id !== currentUser.id &&
+        !task.assignee_ids.includes(currentUser.id)
+      ) {
+        return false;
+      }
+
+      if (needsPeopleOnly && task.assigned_count >= task.people_needed) {
+        return false;
+      }
+
+      if (overdueOnly && !isOverdue(task)) return false;
+      if (blockedOnly && task.status !== "blocked") return false;
+
+      if (deadlineFilter === "overdue" && !isOverdue(task)) return false;
+      if (deadlineFilter === "none" && task.deadline) return false;
+
+      if (deadlineFilter === "7days") {
+        if (!task.deadline) return false;
+        const due = new Date(task.deadline).getTime();
+        const now = Date.now();
+        const sevenDays = now + 7 * 24 * 60 * 60 * 1000;
+        if (due < now || due > sevenDays) return false;
+      }
+
+      return true;
+    });
+  }, [
+    tasks,
+    categoryFilter,
+    projectFilter,
+    personFilter,
+    priorityFilter,
+    deadlineFilter,
+    myTasksOnly,
+    needsPeopleOnly,
+    overdueOnly,
+    blockedOnly,
+    currentUser,
+  ]);
+
+  const metrics = useMemo(() => {
+    return {
+      overdue: tasks.filter(isOverdue).length,
+      blocked: tasks.filter((task) => task.status === "blocked").length,
+      needPeople: tasks.filter(
+        (task) =>
+          task.status !== "completed" &&
+          task.assigned_count < task.people_needed
+      ).length,
+      review: tasks.filter(
+        (task) => task.status === "ready_for_review"
+      ).length,
+      completed:
+        tasks.filter((task) => task.status === "completed").length +
+        historicalCompletedCount,
+    };
+  }, [tasks, historicalCompletedCount]);
+
+  const hasFilters =
+    Boolean(categoryFilter) ||
+    Boolean(projectFilter) ||
+    Boolean(personFilter) ||
+    Boolean(priorityFilter) ||
+    Boolean(deadlineFilter) ||
+    myTasksOnly ||
+    needsPeopleOnly ||
+    overdueOnly ||
+    blockedOnly;
+
+  function clearFilters() {
+    setCategoryFilter("");
+    setProjectFilter("");
+    setPersonFilter("");
+    setPriorityFilter("");
+    setDeadlineFilter("");
+    setMyTasksOnly(false);
+    setNeedsPeopleOnly(false);
+    setOverdueOnly(false);
+    setBlockedOnly(false);
+  }
 
   return (
     <>
       <div className="page-title-row">
         <div>
-          <p className="eyebrow">WORKSTREAMS</p>
-          <h1>Projects</h1>
-          <p>Major bodies of work across technical and operational teams.</p>
+          <p className="eyebrow">TEAM OPERATIONS</p>
+          <h1>Team Board</h1>
+          <p>Everything the team is working on, in one place.</p>
         </div>
-
         <button
-          className="primary-button"
-          type="button"
-          onClick={openNewProject}
+          className={`primary-button ${styles.pageNewTask}`}
+          onClick={() => openNewTask()}
         >
-          + New Project
+          + New Task
         </button>
       </div>
 
-      <div className="project-filters">
-        <button
-          type="button"
-          className={divisionFilter === "all" ? styles.activeFilter : undefined}
-          onClick={() => setDivisionFilter("all")}
-        >
-          All Projects
-        </button>
-
-        <button
-          type="button"
-          className={
-            divisionFilter === "technical" ? styles.activeFilter : undefined
-          }
-          onClick={() => setDivisionFilter("technical")}
-        >
-          Technical
-        </button>
-
-        <button
-          type="button"
-          className={
-            divisionFilter === "operational" ? styles.activeFilter : undefined
-          }
-          onClick={() => setDivisionFilter("operational")}
-        >
-          Operational
-        </button>
-
-        <span />
-
-        <button type="button" disabled>
-          Sort: Target Date
-        </button>
-      </div>
-
-      {!currentUser && (
+      {hydrated && !currentUser && (
         <div className="identity-prompt">
           <strong>Choose your name above.</strong>
           <span>
-            You can browse projects now, but you need a selected profile to
-            create one.
+            My Tasks includes anything you lead or are assigned to.
           </span>
         </div>
       )}
 
-      {pageError && <div className={styles.errorBox}>{pageError}</div>}
-
-      {loading ? (
-        <div className={styles.emptyState}>Loading projects…</div>
-      ) : visibleProjects.length === 0 ? (
-        <div className={styles.emptyState}>
-          No projects match this filter.
+      <section className="metrics-grid">
+        <Metric value={metrics.overdue} label="Overdue" tone="red" />
+        <Metric value={metrics.blocked} label="Blocked" tone="red" />
+        <Metric value={metrics.needPeople} label="Need People" tone="yellow" />
+        <Metric value={metrics.review} label="Need Review" tone="cyan" />
+        <Metric value={metrics.completed} label="Completed" tone="neutral" />
+        <div className="capacity-card">
+          <div>
+            <small>TEAM CAPACITY · THIS WEEK</small>
+            <strong>{capacityHours(capacitySummary.available_minutes)}</strong>
+            <span>available</span>
+          </div>
+          <div>
+            <strong>{capacityHours(capacitySummary.planned_minutes)}</strong>
+            <span>planned</span>
+          </div>
+          <div>
+            <strong>{capacityHours(capacitySummary.remaining_minutes)}</strong>
+            <span>remaining{capacitySummary.over_capacity_count > 0 ? ` · ${capacitySummary.over_capacity_count} over` : ""}</span>
+          </div>
         </div>
-      ) : (
-        <div className="project-grid">
-          {visibleProjects.map((project) => {
-            const visualDivision =
-              project.division === "technical"
-                ? "technical"
-                : project.division === "operational"
-                  ? "operational"
-                  : "both";
+      </section>
 
-            const riskText =
-              project.blocked_count > 0
-                ? `${project.blocked_count} blocked`
-                : project.review_count > 0
-                  ? `${project.review_count} need review`
-                  : "0 blocked";
+      <section className="filterbar">
+        <select
+          className={styles.filterSelect}
+          value={categoryFilter}
+          onChange={(event) => setCategoryFilter(event.target.value)}
+        >
+          <option value="">All Categories</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
 
-            return (
-              <article
-                className={`project-card ${styles.editableProjectCard} ${
-                  visualDivision === "operational"
-                    ? "operational"
-                    : visualDivision === "both"
-                      ? styles.bothProject
-                      : ""
-                }`}
-                key={project.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => openEditProject(project)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    openEditProject(project);
-                  }
-                }}
-                title="Click to edit project"
-              >
-                <div className="project-top">
-                  <span>{titleCase(project.division)}</span>
-                  <div className={styles.projectTopRight}>
-                    <small>EDIT</small>
-                    <strong>{project.progress}%</strong>
-                  </div>
-                </div>
+        <select
+          className={styles.filterSelect}
+          value={projectFilter}
+          onChange={(event) => setProjectFilter(event.target.value)}
+        >
+          <option value="">All Projects</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
 
-                <h2>{project.name}</h2>
+        <select
+          className={styles.filterSelect}
+          value={personFilter}
+          onChange={(event) => setPersonFilter(event.target.value)}
+        >
+          <option value="">All People</option>
+          {teamMembers.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
 
-                {project.description && (
-                  <p className={styles.description}>{project.description}</p>
-                )}
+        <select
+          className={styles.filterSelect}
+          value={priorityFilter}
+          onChange={(event) => setPriorityFilter(event.target.value)}
+        >
+          <option value="">All Priorities</option>
+          <option value="low">Low</option>
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
 
-                <div className="progress">
-                  <i style={{ width: `${project.progress}%` }} />
-                </div>
+        <select
+          className={styles.filterSelect}
+          value={deadlineFilter}
+          onChange={(event) => setDeadlineFilter(event.target.value)}
+        >
+          <option value="">All Deadlines</option>
+          <option value="7days">Due in 7 days</option>
+          <option value="overdue">Overdue</option>
+          <option value="none">No deadline</option>
+        </select>
 
-                <div className="project-stats">
-                  <span>
-                    {project.historical_only
-                      ? `${project.task_count} completed activit${
-                          project.task_count === 1 ? "y" : "ies"
-                        }`
-                      : `${project.task_count} task${
-                          project.task_count === 1 ? "" : "s"
-                        }`}
-                  </span>
-                  <span>
-                    {project.historical_only
-                      ? `${project.historical_hours.toFixed(
-                          Number.isInteger(project.historical_hours) ? 0 : 1
-                        )} hrs`
-                      : riskText}
-                  </span>
-                </div>
+        <button
+          className={myTasksOnly ? "active-filter" : undefined}
+          disabled={!currentUser}
+          onClick={() => setMyTasksOnly((current) => !current)}
+        >
+          My Tasks
+        </button>
 
-                {project.historical_activity_count > 0 &&
-                  !project.historical_only && (
-                    <div className={styles.historyStrip}>
-                      HISTORY · {project.historical_activity_count} activit
-                      {project.historical_activity_count === 1 ? "y" : "ies"} ·{" "}
-                      {project.historical_hours.toFixed(
-                        Number.isInteger(project.historical_hours) ? 0 : 1
-                      )}{" "}
-                      hrs
-                    </div>
-                  )}
+        <button
+          className={needsPeopleOnly ? "active-filter" : undefined}
+          onClick={() => setNeedsPeopleOnly((current) => !current)}
+        >
+          Needs People
+        </button>
 
-                <div className={styles.projectMeta}>
-                  <span>
-                    Lead: <strong>{project.lead_name ?? "Unassigned"}</strong>
-                  </span>
-                  <span className={styles.status}>
-                    {titleCase(project.status)}
-                  </span>
-                </div>
+        <button
+          className={overdueOnly ? "active-filter" : undefined}
+          onClick={() => setOverdueOnly((current) => !current)}
+        >
+          Overdue
+        </button>
 
-                <footer>
-                  {project.historical_only ? "Last activity" : "Target"}:{" "}
-                  {formatTargetDate(project.target_date)}
-                </footer>
-              </article>
-            );
-          })}
+        <button
+          className={blockedOnly ? "active-filter" : undefined}
+          onClick={() => setBlockedOnly((current) => !current)}
+        >
+          Blocked
+        </button>
+
+        {hasFilters && (
+          <button className={styles.clearFilters} onClick={clearFilters}>
+            Clear
+          </button>
+        )}
+      </section>
+
+      {loading && <div className={styles.loading}>Loading real team tasks…</div>}
+
+      {!loading && loadError && (
+        <div className={styles.error}>
+          <strong>The Team Board could not be loaded.</strong>
+          <div>{loadError}</div>
         </div>
       )}
 
-      {(showNewProject || editingProject) && (
+      {!loading && !loadError && tasks.length === 0 && (
+        <div className={styles.emptyBoard}>
+          There are no tasks yet. Click <strong>+ New Task</strong> to create
+          the first one.
+        </div>
+      )}
+
+      {!loading && !loadError && (
+        <section
+          className="kanban"
+          style={{
+            gridTemplateColumns: "repeat(6, minmax(235px, 1fr))",
+          }}
+        >
+          {boardColumns.map((column) => {
+            const columnTasks = filteredTasks.filter(
+              (task) => task.status === column.status
+            );
+
+            return (
+              <div className="kanban-column" key={column.status}>
+                <div className="column-title">
+                  <h2>{column.label}</h2>
+                  <span>{columnTasks.length}</span>
+                </div>
+
+                {columnTasks.map((task) => {
+                  const overdue = isOverdue(task);
+                  const operational =
+                    task.category_division === "operational";
+
+                  return (
+                    <article
+                      className={`${styles.taskCard} ${
+                        operational ? styles.operational : ""
+                      }`}
+                      key={task.id}
+                      title={task.description ?? "Open task details"}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedTask(task)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedTask(task);
+                        }
+                      }}
+                    >
+                      <h3 className={styles.taskTitle}>{task.title}</h3>
+
+                      <div className={styles.taskMeta}>
+                        <span>Lead: {task.lead_name ?? "Unassigned"}</span>
+                        <span>
+                          👥 {task.assigned_count} / {task.people_needed}
+                        </span>
+                      </div>
+
+                      <div className={styles.taskFooter}>
+                        <span
+                          className={
+                            overdue ? styles.dueOverdue : styles.dueDate
+                          }
+                        >
+                          Due: {formatDeadline(task.deadline)}
+                        </span>
+                      </div>
+                    </article>
+                  );
+                })}
+
+                {columnTasks.length === 0 && (
+                  <p className="empty-column">No matching tasks.</p>
+                )}
+
+                {column.status !== "completed" && (
+                  <button className="add-task" onClick={() => openNewTask()}>
+                    + Add task
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+
+      {selectedTask && (
+        <TaskDetailModal
+          taskId={selectedTask.id}
+          projects={projects}
+          categories={categories}
+          teamMembers={teamMembers}
+          currentUser={currentUser}
+          onClose={() => setSelectedTask(null)}
+          onChanged={loadBoard}
+        />
+      )}
+
+      {showModal && (
         <div
           className={styles.overlay}
           role="presentation"
           onMouseDown={(event) => {
-            if (event.currentTarget === event.target && !saving) {
-              setShowNewProject(false);
-              setEditingProject(null);
+            if (event.currentTarget === event.target && !submitting) {
+              setShowModal(false);
             }
           }}
         >
-          <form
+          <section
             className={styles.modal}
-            onSubmit={saveProject}
-            aria-label={editingProject ? "Edit project" : "Create new project"}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-task-title"
           >
             <div className={styles.modalHeader}>
               <div>
-                <p className="eyebrow">
-                  {editingProject ? "EDIT WORKSTREAM" : "NEW WORKSTREAM"}
-                </p>
-                <h2>{editingProject ? "Edit Project" : "Create Project"}</h2>
-                <p>
-                  {editingProject
-                    ? "Update this project's name, owner, dates, status, or description."
-                    : "Projects group related tasks into a major body of team work."}
-                </p>
+                <p className="eyebrow">NEW WORK</p>
+                <h2 id="new-task-title">Create Task</h2>
               </div>
-
               <button
-                type="button"
                 className={styles.close}
-                onClick={() => {
-                  setShowNewProject(false);
-                  setEditingProject(null);
-                  resetForm();
-                }}
-                disabled={saving}
+                onClick={() => setShowModal(false)}
+                disabled={submitting}
                 aria-label="Close"
               >
                 ×
               </button>
             </div>
 
-            <div className={styles.formBody}>
-              <label className={styles.field}>
-                Project Name
+            <form className={styles.form} onSubmit={submitTask}>
+              <label>
+                Task Name
                 <input
-                  autoFocus
                   required
-                  maxLength={120}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="e.g. Centerstage Intake"
+                  minLength={2}
+                  maxLength={160}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="e.g. Contact Gene Griffin to confirm demo date"
                 />
               </label>
 
-              <label className={styles.field}>
-                Description
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder="What does this project need to accomplish?"
-                />
-              </label>
-
-              <div className={styles.twoColumn}>
-                <label className={styles.field}>
-                  Division
+              <div className={styles.twoCol}>
+                <label>
+                  Project
                   <select
-                    value={division}
-                    onChange={(event) =>
-                      setDivision(
-                        event.target.value as
-                          | "technical"
-                          | "operational"
-                          | "both"
-                      )
-                    }
+                    required
+                    value={projectId}
+                    onChange={(event) => setProjectId(event.target.value)}
                   >
-                    <option value="technical">Technical</option>
-                    <option value="operational">Operational</option>
-                    <option value="both">Both</option>
+                    <option value="">Select project</option>
+                    {projects
+                      .filter((project) => project.status !== "completed")
+                      .map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
                   </select>
                 </label>
 
-                <label className={styles.field}>
-                  Status
+                <label>
+                  Category
                   <select
-                    value={status}
-                    onChange={(event) =>
-                      setStatus(
-                        event.target.value as
-                          | "planning"
-                          | "active"
-                          | "paused"
-                          | "completed"
-                      )
-                    }
+                    required
+                    value={categoryId}
+                    onChange={(event) => setCategoryId(event.target.value)}
                   >
-                    <option value="planning">Planning</option>
-                    <option value="active">Active</option>
-                    <option value="paused">Paused</option>
-                    <option value="completed">Completed</option>
+                    <option value="">Select category</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>
 
-              <div className={styles.twoColumn}>
-                <label className={styles.field}>
-                  Project Lead
+              <label className={styles.full}>
+                Description
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="What specifically needs to be accomplished?"
+                />
+              </label>
+
+              <div className={styles.fourCol}>
+                <label>
+                  Priority
+                  <select
+                    value={priority}
+                    onChange={(event) =>
+                      setPriority(
+                        event.target.value as
+                          | "low"
+                          | "normal"
+                          | "high"
+                          | "critical"
+                      )
+                    }
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </label>
+
+                <label>
+                  Difficulty
+                  <select
+                    value={difficulty}
+                    onChange={(event) => setDifficulty(event.target.value)}
+                  >
+                    <option value="">Not set</option>
+                    <option value="1">1 · Very Easy</option>
+                    <option value="2">2 · Easy</option>
+                    <option value="3">3 · Moderate</option>
+                    <option value="4">4 · Difficult</option>
+                    <option value="5">5 · Advanced</option>
+                  </select>
+                </label>
+
+                <label>
+                  People Needed
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    required
+                    value={peopleNeeded}
+                    onChange={(event) => setPeopleNeeded(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Estimate
+                  <select
+                    value={estimatedMinutes}
+                    onChange={(event) => setEstimatedMinutes(event.target.value)}
+                  >
+                    <option value="">Not set</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="120">2 hours</option>
+                    <option value="180">3 hours</option>
+                    <option value="240">4 hours</option>
+                    <option value="360">6 hours</option>
+                    <option value="480">8 hours</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className={styles.twoCol}>
+                <label>
+                  Deadline
+                  <input
+                    type="date"
+                    value={deadline}
+                    onChange={(event) => setDeadline(event.target.value)}
+                  />
+                </label>
+
+                <label>
+                  Task Lead
                   <select
                     value={leadMemberId}
-                    onChange={(event) => setLeadMemberId(event.target.value)}
+                    onChange={(event) => {
+                      const nextLead = event.target.value;
+                      setLeadMemberId(nextLead);
+                      if (
+                        nextLead &&
+                        !assigneeIds.includes(nextLead)
+                      ) {
+                        setAssigneeIds((current) => [...current, nextLead]);
+                      }
+                    }}
                   >
                     <option value="">Unassigned</option>
                     {teamMembers.map((member) => (
-                      <option value={member.id} key={member.id}>
+                      <option key={member.id} value={member.id}>
                         {member.name} · {titleCase(member.role)}
                       </option>
                     ))}
                   </select>
                 </label>
+              </div>
 
-                <label className={styles.field}>
-                  Target Date
+              <div className={styles.twoCol}>
+                <label>
+                  Point of Contact
+                  <select
+                    value={pocMemberId}
+                    onChange={(event) => setPocMemberId(event.target.value)}
+                  >
+                    <option value="">None</option>
+                    {teamMembers.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Created By
                   <input
-                    type="date"
-                    value={targetDate}
-                    onChange={(event) => setTargetDate(event.target.value)}
+                    value={currentUser?.name ?? "Select yourself above"}
+                    disabled
                   />
                 </label>
               </div>
 
+              <fieldset className={styles.assignees}>
+                <legend>Assigned Team Members</legend>
+                <p className={styles.help}>
+                  The Task Lead is automatically included. Select additional
+                  people now, or leave open spots so students can self-assign
+                  later.
+                </p>
+                <div className={styles.assigneeGrid}>
+                  {teamMembers.map((member) => (
+                    <label key={member.id}>
+                      <input
+                        type="checkbox"
+                        checked={assigneeIds.includes(member.id)}
+                        onChange={() => toggleAssignee(member.id)}
+                      />
+                      {member.name}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
               {formError && (
-                <div className={styles.formError}>{formError}</div>
+                <p className={styles.formMessage}>{formError}</p>
               )}
-            </div>
 
-            <div className={styles.actions}>
-              <button
-                className="ghost-button"
-                type="button"
-                onClick={() => {
-                  setShowNewProject(false);
-                  setEditingProject(null);
-                  resetForm();
-                }}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-
-              <button
-                className="primary-button"
-                type="submit"
-                disabled={saving || !currentUser}
-              >
-                {saving
-                  ? editingProject
-                    ? "Saving…"
-                    : "Creating…"
-                  : editingProject
-                    ? "Save Changes"
-                    : "Create Project"}
-              </button>
-            </div>
-          </form>
+              <div className={styles.actions}>
+                <button
+                  className={styles.secondary}
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setShowModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className={styles.submit}
+                  type="submit"
+                  disabled={submitting}
+                >
+                  {submitting ? "Creating…" : "Create Task"}
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
       )}
     </>
