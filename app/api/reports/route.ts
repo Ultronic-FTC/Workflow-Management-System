@@ -67,6 +67,13 @@ type HistoricalRow = {
   description: string | null;
 };
 
+type ImpactRow = {
+  impact_year: number;
+  project_name: string;
+  impact_month: number | null;
+  people_impacted: number;
+};
+
 type Division = "operational" | "technical";
 
 type AggregateRow = {
@@ -272,6 +279,7 @@ export async function GET(request: Request) {
       taskRows,
       timeEntryRows,
       historicalRows,
+      impactRows,
     ] = await Promise.all([
       fetchAll((from, to) =>
         supabase
@@ -315,6 +323,16 @@ export async function GET(request: Request) {
           .order("work_date", { ascending: true })
           .range(from, to)
       ),
+      fetchAll((from, to) =>
+        supabase
+          .from("project_impact")
+          .select(
+            "impact_year, project_name, impact_month, people_impacted"
+          )
+          .order("project_name", { ascending: true })
+          .order("impact_month", { ascending: true, nullsFirst: false })
+          .range(from, to)
+      ),
     ]);
 
     const members = memberRows as MemberRow[];
@@ -323,6 +341,7 @@ export async function GET(request: Request) {
     const tasks = taskRows as TaskRow[];
     const timeEntries = timeEntryRows as TimeEntryRow[];
     const history = historicalRows as HistoricalRow[];
+    const impact = impactRows as ImpactRow[];
 
     const years = new Set<number>();
 
@@ -334,6 +353,12 @@ export async function GET(request: Request) {
     for (const entry of history) {
       const parts = dateParts(entry.work_date);
       if (parts) years.add(parts.year);
+    }
+
+    for (const entry of impact) {
+      if (Number.isInteger(entry.impact_year)) {
+        years.add(entry.impact_year);
+      }
     }
 
     if (years.size === 0) years.add(currentYear);
@@ -508,6 +533,49 @@ export async function GET(request: Request) {
       }
     }
 
+    const operationsProjectImpact = new Map<string, number>();
+    const impactMonthsByProject = new Map<string, number[]>();
+    const impactOneTimeByProject = new Map<string, number>();
+
+    for (const entry of impact) {
+      if (entry.impact_year !== year) continue;
+
+      const projectKey =
+        normalize(entry.project_name) || "unknown-project";
+      const projectLabel = entry.project_name || "Unknown Project";
+      const people = Number(entry.people_impacted || 0);
+
+      operationsProjectImpact.set(
+        projectKey,
+        (operationsProjectImpact.get(projectKey) ?? 0) + people
+      );
+
+      projectLabels.set(projectKey, projectLabel);
+
+      if (
+        entry.impact_month != null &&
+        entry.impact_month >= 1 &&
+        entry.impact_month <= 12
+      ) {
+        const months =
+          impactMonthsByProject.get(projectKey) ?? Array(12).fill(0);
+
+        months[entry.impact_month - 1] += people;
+        impactMonthsByProject.set(projectKey, months);
+      } else {
+        impactOneTimeByProject.set(
+          projectKey,
+          (impactOneTimeByProject.get(projectKey) ?? 0) + people
+        );
+      }
+
+      // Impact-only projects/programs still appear in the Operations project
+      // pivot, even if they currently have no tracked hours.
+      if (!operationsProjects.has(projectKey)) {
+        operationsProjects.set(projectKey, Array(12).fill(0));
+      }
+    }
+
     const operationsPeoplePivot = pivotFromMap(
       operationsPeople,
       personLabels,
@@ -538,6 +606,34 @@ export async function GET(request: Request) {
 
     const activityCounts = operationsActivities.map((set) => set.size);
 
+    const impactMatrixKeys = new Set<string>([
+      ...operationsProjects.keys(),
+      ...impactMonthsByProject.keys(),
+      ...impactOneTimeByProject.keys(),
+    ]);
+
+    const impactMatrix = [...impactMatrixKeys]
+      .map((key) => {
+        const months =
+          impactMonthsByProject.get(key) ?? Array(12).fill(0);
+        const oneTime = impactOneTimeByProject.get(key) ?? 0;
+        const total =
+          months.reduce((sum, value) => sum + value, 0) + oneTime;
+
+        return {
+          key,
+          project_name: projectLabels.get(key) ?? key,
+          months,
+          one_time: oneTime,
+          total,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.total - a.total ||
+          a.project_name.localeCompare(b.project_name)
+      );
+
     return NextResponse.json(
       {
         year,
@@ -546,6 +642,12 @@ export async function GET(request: Request) {
         operations: {
           people: operationsPeoplePivot,
           projects: operationsProjectsPivot,
+          project_impact: Object.fromEntries(operationsProjectImpact),
+          impact_matrix: impactMatrix,
+          impact_total: [...operationsProjectImpact.values()].reduce(
+            (sum, value) => sum + value,
+            0
+          ),
           activity_counts: activityCounts,
           activity_total: activityCounts.reduce(
             (sum, value) => sum + value,
