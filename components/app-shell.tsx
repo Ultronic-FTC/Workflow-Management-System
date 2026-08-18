@@ -10,7 +10,6 @@ const nav = [
   ["/", "Team Board"],
   ["/projects", "Projects"],
   ["/capacity", "Capacity"],
-  ["/ideas-decisions", "Ideas & Decisions"],
   ["/operational-calendar", "Operational Calendar"],
 ];
 
