@@ -1,51 +1,45 @@
-# Ultronic Build 2P — Edit Projects
+# Ultronic Build 3A — Calendar Uses Actual Work Date
 
-The Projects cards previously displayed data but were not editable.
+For completed tasks, the Operational Calendar now places the task on the date
+the work was actually finished, not on the task's deadline/closure timing.
 
-This build makes every project card clickable.
+## How "work completed" is determined
 
-## What you can edit
+For a completed task, the calendar uses the LATEST date in Actual Time /
+Time History for that task.
 
-- Project Name
-- Description
-- Division: Technical / Operational / Both
-- Status: Planning / Active / Paused / Completed
-- Project Lead
-- Target Date
+Example:
 
-This works for BOTH:
-- current projects
-- historical projects imported from Hours Tracking
+- Task deadline / closed: Aug 18
+- Natalie logged work: Aug 15
+- Alejandro logged work: Aug 15
+- Liev logged work: Aug 15
 
-Editing a historical project's project record does NOT alter the underlying
-historical hours/activity records.
+Calendar displays the completed task on Aug 15.
 
-## INSTALL
+If work was logged on Aug 14 and Aug 15, the task appears on Aug 15 because
+that is the last date work was performed.
 
-REPLACE:
+## Fallback
 
-- `app/projects/page.tsx`
-- `app/projects/projects.module.css`
-- `app/api/projects/route.ts`
+If a completed task has no Actual Time entries at all, the calendar falls back
+to the task deadline so it does not disappear.
+
+Open tasks still appear on their deadline as before.
+
+## REPLACE ONLY
+
+- `app/api/tasks/route.ts`
+- `app/operational-calendar/page.tsx`
 
 No Supabase migration.
-No new environment variables.
-
-## USE
-
-1. Select yourself under Working As.
-2. Open Projects.
-3. Click any project card.
-4. Edit Project opens.
-5. Make changes.
-6. Click Save Changes.
-
-The project card refreshes immediately after the save.
+No CSS changes.
+Do not replace `app/api/tasks/[id]/route.ts`.
 
 ## COMMIT
 
 Suggested commit:
 
-`Add project editing`
+`Use actual work date on calendar`
 
-Commit to main -> Push origin -> wait for Vercel Ready -> hard refresh.
+Push to main -> wait for Vercel Ready -> hard refresh Operational Calendar.

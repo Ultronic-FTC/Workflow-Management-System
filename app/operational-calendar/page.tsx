@@ -30,6 +30,7 @@ type Task = {
   status: TaskStatus;
   priority: "low" | "normal" | "high" | "critical";
   deadline: string | null;
+  last_work_date: string | null;
   lead_member_id: string | null;
   lead_name: string | null;
   assignee_ids: string[];
@@ -273,7 +274,12 @@ export default function OperationalCalendarPage() {
     const nextEvents: CalendarEvent[] = [];
 
     for (const task of operationalTasks) {
-      const dateKey = dateKeyFromValue(task.deadline);
+      const dateKey =
+        task.status === "completed"
+          ? dateKeyFromValue(task.last_work_date) ??
+            dateKeyFromValue(task.deadline)
+          : dateKeyFromValue(task.deadline);
+
       if (!dateKey) continue;
 
       nextEvents.push({

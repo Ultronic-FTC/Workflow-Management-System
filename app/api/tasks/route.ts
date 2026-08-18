@@ -55,6 +55,11 @@ type AssignmentRow = {
   member_id: string;
 };
 
+type TimeEntryRow = {
+  task_id: string;
+  work_date: string;
+};
+
 type TaskRow = {
   id: string;
   project_id: string;
@@ -88,6 +93,7 @@ export async function GET() {
       categoriesResult,
       membersResult,
       assignmentsResult,
+      timeEntriesResult,
     ] = await Promise.all([
       supabase
         .from("tasks")
@@ -122,6 +128,11 @@ export async function GET() {
         .from("task_assignments")
         .select("task_id, member_id")
         .order("assigned_at", { ascending: true }),
+
+      supabase
+        .from("time_entries")
+        .select("task_id, work_date")
+        .order("work_date", { ascending: true }),
     ]);
 
     const firstError =
@@ -129,7 +140,8 @@ export async function GET() {
       projectsResult.error ||
       categoriesResult.error ||
       membersResult.error ||
-      assignmentsResult.error;
+      assignmentsResult.error ||
+      timeEntriesResult.error;
 
     if (firstError) {
       console.error("Unable to load team board:", firstError);
@@ -143,6 +155,7 @@ export async function GET() {
     const categories = (categoriesResult.data ?? []) as CategoryRow[];
     const members = (membersResult.data ?? []) as MemberRow[];
     const assignments = (assignmentsResult.data ?? []) as AssignmentRow[];
+    const timeEntries = (timeEntriesResult.data ?? []) as TimeEntryRow[];
     const taskRows = (tasksResult.data ?? []) as TaskRow[];
 
     const projectMap = new Map(projects.map((project) => [project.id, project]));
@@ -156,6 +169,19 @@ export async function GET() {
       const existing = assignmentsByTask.get(assignment.task_id) ?? [];
       existing.push(assignment.member_id);
       assignmentsByTask.set(assignment.task_id, existing);
+    }
+
+    const lastWorkDateByTask = new Map<string, string>();
+
+    for (const entry of timeEntries) {
+      const workDate = entry.work_date?.slice(0, 10);
+      if (!workDate) continue;
+
+      const current = lastWorkDateByTask.get(entry.task_id);
+
+      if (!current || workDate > current) {
+        lastWorkDateByTask.set(entry.task_id, workDate);
+      }
     }
 
     const tasks = taskRows.map((task) => {
@@ -180,6 +206,7 @@ export async function GET() {
           .map((id) => memberMap.get(id)?.name)
           .filter((name): name is string => Boolean(name)),
         assigned_count: assignmentIds.length,
+        last_work_date: lastWorkDateByTask.get(task.id) ?? null,
       };
     });
 
