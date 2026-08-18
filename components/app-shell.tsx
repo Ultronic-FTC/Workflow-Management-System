@@ -11,6 +11,7 @@ const nav = [
   ["/projects", "Projects"],
   ["/capacity", "Capacity"],
   ["/operational-calendar", "Operational Calendar"],
+  ["/reports", "Reports"],
 ];
 
 const competitionEditors = new Set(["captain", "mentor", "coach"]);
