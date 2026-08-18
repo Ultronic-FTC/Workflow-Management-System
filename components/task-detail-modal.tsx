@@ -207,13 +207,31 @@ export function TaskDetailModal({
       const response = await fetch(`/api/tasks/${taskId}`, {
         cache: "no-store",
       });
+
+      const contentType = response.headers.get("content-type") ?? "";
+
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          "The task details API is not responding correctly. Please refresh and try again."
+        );
+      }
+
       const payload = await response.json();
 
       if (!response.ok) {
         throw new Error(payload.error ?? "Unable to load task.");
       }
 
-      const detail = payload.task as TaskDetail;
+      const detail = (payload.task ?? payload.data ?? payload) as
+        | TaskDetail
+        | undefined;
+
+      if (!detail || typeof detail.title !== "string") {
+        throw new Error(
+          "The task details response was incomplete. Please refresh and try again."
+        );
+      }
+
       setTask(detail);
       setTitle(detail.title);
       setDescription(detail.description ?? "");
