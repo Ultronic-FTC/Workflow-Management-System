@@ -45,6 +45,10 @@ function formatTargetDate(value: string | null) {
 export default function ProjectsPage() {
   const { currentUser, teamMembers } = useCurrentUser();
 
+  const canDeleteProject =
+    currentUser != null &&
+    ["captain", "mentor", "coach"].includes(currentUser.role);
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
@@ -152,6 +156,65 @@ export default function ProjectsPage() {
     setTargetDate(project.target_date ?? "");
     setFormError("");
     setEditingProject(project);
+  }
+
+  async function deleteProject() {
+    if (!editingProject) return;
+
+    if (!currentUser) {
+      setFormError(
+        "Select yourself under Working As before deleting a project."
+      );
+      return;
+    }
+
+    if (!canDeleteProject) {
+      setFormError(
+        "Only a captain, mentor, or coach can permanently delete a project."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Permanently delete "${editingProject.name}"?\n\n` +
+        "This removes the project record from the Projects tab.\n\n" +
+        "Historical spreadsheet hours are NOT deleted.\n\n" +
+        "If the project still has live tasks, deletion will be blocked."
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    setFormError("");
+
+    try {
+      const response = await fetch("/api/projects", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: editingProject.id,
+          actor_member_id: currentUser.id,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to delete project.");
+      }
+
+      setEditingProject(null);
+      resetForm();
+      await loadProjects();
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : "Unable to delete project."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function saveProject(event: FormEvent) {
@@ -538,6 +601,19 @@ export default function ProjectsPage() {
             </div>
 
             <div className={styles.actions}>
+              <div className={styles.actionLeft}>
+                {editingProject && canDeleteProject && (
+                  <button
+                    className={styles.deleteProject}
+                    type="button"
+                    onClick={deleteProject}
+                    disabled={saving}
+                  >
+                    Delete Project
+                  </button>
+                )}
+              </div>
+
               <button
                 className="ghost-button"
                 type="button"

@@ -401,3 +401,123 @@ export async function PATCH(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  if (!(await hasTeamAccess())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const body = (await request.json()) as {
+      id?: string;
+      actor_member_id?: string | null;
+    };
+
+    const id = body.id?.trim() ?? "";
+    const actorMemberId = body.actor_member_id || null;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Project id is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!actorMemberId) {
+      return NextResponse.json(
+        { error: "Select yourself under Working As before deleting a project." },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createAdminClient();
+
+    const { data: actor, error: actorError } = await supabase
+      .from("team_members")
+      .select("id, role, active")
+      .eq("id", actorMemberId)
+      .maybeSingle();
+
+    if (actorError) {
+      throw actorError;
+    }
+
+    if (!actor || actor.active === false) {
+      return NextResponse.json(
+        { error: "Only an active team member can delete a project." },
+        { status: 403 }
+      );
+    }
+
+    if (!["captain", "mentor", "coach"].includes(actor.role)) {
+      return NextResponse.json(
+        {
+          error:
+            "Only a captain, mentor, or coach can permanently delete a project.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const { data: project, error: projectError } = await supabase
+      .from("projects")
+      .select("id, name")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (projectError) {
+      throw projectError;
+    }
+
+    if (!project) {
+      return NextResponse.json(
+        { error: "Project not found." },
+        { status: 404 }
+      );
+    }
+
+    const { count: taskCount, error: taskCountError } = await supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", id);
+
+    if (taskCountError) {
+      throw taskCountError;
+    }
+
+    if ((taskCount ?? 0) > 0) {
+      return NextResponse.json(
+        {
+          error:
+            `This project still has ${taskCount} live task${
+              taskCount === 1 ? "" : "s"
+            }. Move or delete those tasks before deleting the project.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("projects")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      message: "Project deleted.",
+      deleted_project_id: id,
+      deleted_project_name: project.name,
+    });
+  } catch (error) {
+    console.error("Delete project failed:", error);
+
+    return NextResponse.json(
+      { error: "Unable to delete project." },
+      { status: 500 }
+    );
+  }
+}
