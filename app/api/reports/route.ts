@@ -225,6 +225,10 @@ function pivotFromMap(
   });
 
   rows.sort((a, b) => {
+    // Put the highest total hours at the top of every pivot table.
+    if (a.total !== b.total) return b.total - a.total;
+
+    // Use roster order only as a tie-breaker for equal totals.
     if (orderByKey) {
       const aOrder = orderByKey.get(a.key) ?? 999999;
       const bOrder = orderByKey.get(b.key) ?? 999999;
@@ -232,7 +236,6 @@ function pivotFromMap(
       if (aOrder !== bOrder) return aOrder - bOrder;
     }
 
-    if (a.total !== b.total) return b.total - a.total;
     return a.label.localeCompare(b.label);
   });
 
