@@ -397,7 +397,6 @@ export default function ProjectsPage() {
                   <span>{titleCase(project.division)}</span>
                   <div className={styles.projectTopRight}>
                     <small>EDIT</small>
-                    <strong>{project.progress}%</strong>
                   </div>
                 </div>
 
@@ -406,10 +405,6 @@ export default function ProjectsPage() {
                 {project.description && (
                   <p className={styles.description}>{project.description}</p>
                 )}
-
-                <div className="progress">
-                  <i style={{ width: `${project.progress}%` }} />
-                </div>
 
                 <div className="project-stats">
                   <span>
