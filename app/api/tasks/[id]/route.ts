@@ -695,27 +695,6 @@ export async function PATCH(request: Request, context: RouteContext) {
         );
       }
 
-      const { data: incompleteSubtasks, error: subtaskError } = await supabase
-        .from("subtasks")
-        .select("id")
-        .eq("task_id", id)
-        .eq("completed", false)
-        .limit(1);
-
-      if (subtaskError) {
-        throw subtaskError;
-      }
-
-      if ((incompleteSubtasks ?? []).length > 0) {
-        return NextResponse.json(
-          {
-            error:
-              "Complete all subtasks before marking this task complete.",
-          },
-          { status: 400 }
-        );
-      }
-
       const now = new Date().toISOString();
 
       const { error } = await supabase

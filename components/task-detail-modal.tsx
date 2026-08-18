@@ -103,7 +103,7 @@ type Props = {
   onChanged: () => Promise<void> | void;
 };
 
-type Tab = "details" | "subtasks" | "time" | "activity";
+type Tab = "details" | "time";
 
 const reviewerRoles = new Set(["captain", "mentor", "coach"]);
 
@@ -136,25 +136,6 @@ function formatDate(value: string | null | undefined) {
 
 function toDateInput(value: string | null | undefined) {
   return value ? new Date(value).toISOString().slice(0, 10) : "";
-}
-
-function humanAction(action: string) {
-  const names: Record<string, string> = {
-    updated_task: "Updated task",
-    self_assigned: "Self-assigned",
-    started_work: "Started work",
-    blocked: "Blocked task",
-    resumed_work: "Resumed work",
-    submitted_for_review: "Submitted for review",
-    approved: "Approved and completed",
-    returned_for_changes: "Returned for changes",
-    added_subtask: "Added subtask",
-    updated_subtask: "Updated subtask",
-    deleted_subtask: "Deleted subtask",
-    logged_time: "Logged time",
-  };
-
-  return names[action] ?? titleCase(action);
 }
 
 export function TaskDetailModal({
@@ -190,8 +171,6 @@ export function TaskDetailModal({
   const [evidenceLocation, setEvidenceLocation] = useState("");
 
   const [blockReason, setBlockReason] = useState("");
-
-  const [newSubtask, setNewSubtask] = useState("");
 
   const [timeHoursByMember, setTimeHoursByMember] = useState<
     Record<string, string>
@@ -284,13 +263,6 @@ export function TaskDetailModal({
   const canReview = Boolean(
     currentUser && reviewerRoles.has(currentUser.role)
   );
-
-  const subtaskProgress = useMemo(() => {
-    if (!task || task.subtasks.length === 0) return null;
-
-    const done = task.subtasks.filter((item) => item.completed).length;
-    return `${done} / ${task.subtasks.length}`;
-  }, [task]);
 
   const loggedMinutesByMember = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -429,16 +401,6 @@ export function TaskDetailModal({
     );
   }
 
-  async function addSubtask(event: FormEvent) {
-    event.preventDefault();
-
-    const value = newSubtask.trim();
-    if (!value) return;
-
-    await requestAction("add_subtask", { subtask_title: value });
-    setNewSubtask("");
-  }
-
   async function logTime(event: FormEvent) {
     event.preventDefault();
 
@@ -571,11 +533,6 @@ export function TaskDetailModal({
               <span className={styles.pill}>
                 {titleCase(task.priority)} Priority
               </span>
-              {subtaskProgress && (
-                <span className={styles.pill}>
-                  Subtasks {subtaskProgress}
-                </span>
-              )}
               <span className={styles.pill}>
                 Actual {formatMinutes(task.actual_minutes)}
               </span>
@@ -694,18 +651,20 @@ export function TaskDetailModal({
           </div>
 
           <div className={styles.tabs}>
-            {(["details", "subtasks", "time", "activity"] as Tab[]).map(
-              (value) => (
-                <button
-                  type="button"
-                  key={value}
-                  className={tab === value ? styles.activeTab : undefined}
-                  onClick={() => setTab(value)}
-                >
-                  {value === "time" ? "Actual Time" : titleCase(value)}
-                </button>
-              )
-            )}
+            <button
+              type="button"
+              className={tab === "details" ? styles.activeTab : undefined}
+              onClick={() => setTab("details")}
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              className={tab === "time" ? styles.activeTab : undefined}
+              onClick={() => setTab("time")}
+            >
+              Actual Time
+            </button>
           </div>
 
           {tab === "details" && (
@@ -959,76 +918,6 @@ export function TaskDetailModal({
             </form>
           )}
 
-          {tab === "subtasks" && (
-            <>
-              <section className={styles.section}>
-                <h3>Subtasks</h3>
-
-                <form className={styles.inlineAction} onSubmit={addSubtask}>
-                  <input
-                    value={newSubtask}
-                    onChange={(event) => setNewSubtask(event.target.value)}
-                    placeholder="Add a smaller checklist item…"
-                  />
-                  <button
-                    className={styles.action}
-                    disabled={!currentUser || busy || !newSubtask.trim()}
-                  >
-                    + Add
-                  </button>
-                </form>
-              </section>
-
-              <div className={styles.subtaskList}>
-                {task.subtasks.length === 0 && (
-                  <div className={styles.notice}>
-                    No subtasks have been added.
-                  </div>
-                )}
-
-                {task.subtasks.map((subtask) => (
-                  <div className={styles.subtaskRow} key={subtask.id}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={subtask.completed}
-                        disabled={!currentUser || busy}
-                        onChange={(event) =>
-                          requestAction("toggle_subtask", {
-                            subtask_id: subtask.id,
-                            completed: event.target.checked,
-                          })
-                        }
-                      />
-                      <span
-                        className={
-                          subtask.completed ? styles.subtaskDone : undefined
-                        }
-                      >
-                        {subtask.title}
-                      </span>
-                    </label>
-
-                    <span></span>
-
-                    <button
-                      className={styles.iconButton}
-                      disabled={!currentUser || busy}
-                      onClick={() =>
-                        requestAction("delete_subtask", {
-                          subtask_id: subtask.id,
-                        })
-                      }
-                      aria-label={`Delete ${subtask.title}`}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
           {tab === "time" && (
             <>
               <div className={styles.summaryRow}>
@@ -1191,36 +1080,6 @@ export function TaskDetailModal({
             </>
           )}
 
-          {tab === "activity" && (
-            <section className={styles.section}>
-              <h3>Task History</h3>
-
-              <div className={styles.activityList}>
-                {task.activity.length === 0 && (
-                  <div className={styles.notice}>
-                    No task activity has been recorded yet.
-                  </div>
-                )}
-
-                {task.activity.map((entry) => (
-                  <div className={styles.activityRow} key={entry.id}>
-                    <div className={styles.activityWho}>
-                      {entry.actor_name}
-                      <div className={styles.activityNote}>
-                        {formatDate(entry.created_at)}
-                      </div>
-                    </div>
-
-                    <div className={styles.activityNote}>
-                      {humanAction(entry.action)}
-                    </div>
-
-                    <span></span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
         </div>
       </section>
     </div>
