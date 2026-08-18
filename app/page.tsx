@@ -596,10 +596,6 @@ export default function TeamBoardPage() {
 
                 {columnTasks.map((task) => {
                   const overdue = isOverdue(task);
-                  const peopleShort = Math.max(
-                    0,
-                    task.people_needed - task.assigned_count
-                  );
                   const operational =
                     task.category_division === "operational";
 
@@ -620,10 +616,6 @@ export default function TeamBoardPage() {
                         }
                       }}
                     >
-                      <div className={styles.taskLabel}>
-                        {task.category_name} · {task.project_name}
-                      </div>
-
                       <h3 className={styles.taskTitle}>{task.title}</h3>
 
                       <div className={styles.taskMeta}>
@@ -634,40 +626,13 @@ export default function TeamBoardPage() {
                       </div>
 
                       <div className={styles.taskFooter}>
-                        <span>{formatEstimate(task.estimated_minutes)}</span>
-                        <span>{formatDeadline(task.deadline)}</span>
-                      </div>
-
-                      <div className={styles.badges}>
-                        {overdue && (
-                          <span className={`${styles.badge} ${styles.overdue}`}>
-                            OVERDUE
-                          </span>
-                        )}
-
-                        {task.status === "blocked" && (
-                          <span className={`${styles.badge} ${styles.blocked}`}>
-                            BLOCKED
-                          </span>
-                        )}
-
-                        {task.status === "ready_for_review" && (
-                          <span className={`${styles.badge} ${styles.review}`}>
-                            REVIEW
-                          </span>
-                        )}
-
-                        {peopleShort > 0 && task.status !== "completed" && (
-                          <span className={styles.badge}>
-                            {peopleShort} PERSON{peopleShort === 1 ? "" : "S"} NEEDED
-                          </span>
-                        )}
-
-                        {task.priority === "critical" && (
-                          <span className={`${styles.badge} ${styles.critical}`}>
-                            CRITICAL
-                          </span>
-                        )}
+                        <span
+                          className={
+                            overdue ? styles.dueOverdue : styles.dueDate
+                          }
+                        >
+                          Due: {formatDeadline(task.deadline)}
+                        </span>
                       </div>
                     </article>
                   );
