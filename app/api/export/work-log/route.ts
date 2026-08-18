@@ -75,13 +75,18 @@ type ExportRow = {
 
 const PAGE_SIZE = 1000;
 
-async function fetchAll(
-  buildQuery: (from: number, to: number) => Promise<{
-    data: unknown[] | null;
-    error: unknown;
-  }>
-) {
-  const result: unknown[] = [];
+type PagedQueryResult<T> = {
+  data: T[] | null;
+  error: unknown;
+};
+
+async function fetchAll<T>(
+  buildQuery: (
+    from: number,
+    to: number
+  ) => PromiseLike<PagedQueryResult<T>>
+): Promise<T[]> {
+  const result: T[] = [];
 
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await buildQuery(
