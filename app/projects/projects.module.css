@@ -199,3 +199,50 @@
   font-weight: 850;
   letter-spacing: .055em;
 }
+
+
+/* Build 2P — editable project cards */
+.editableProjectCard {
+  cursor: pointer;
+  transition:
+    transform .12s ease,
+    border-color .12s ease,
+    box-shadow .12s ease;
+}
+
+.editableProjectCard:hover {
+  transform: translateY(-2px);
+  border-color: #4b5a6b;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, .20);
+}
+
+.editableProjectCard:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+}
+
+.projectTopRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.projectTopRight small {
+  border: 1px solid #354250;
+  border-radius: 5px;
+  color: #8b98a7;
+  padding: 3px 5px;
+  font-family:
+    "SFMono-Regular",
+    "Cascadia Mono",
+    Consolas,
+    monospace;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.editableProjectCard:hover .projectTopRight small {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}

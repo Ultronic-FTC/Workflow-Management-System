@@ -14,6 +14,17 @@ type NewProjectBody = {
   created_by_member_id?: string | null;
 };
 
+type UpdateProjectBody = {
+  id?: string;
+  name?: string;
+  description?: string | null;
+  division?: "technical" | "operational" | "both";
+  status?: "planning" | "active" | "paused" | "completed";
+  lead_member_id?: string | null;
+  target_date?: string | null;
+  actor_member_id?: string | null;
+};
+
 type HistoricalProjectRow = {
   work_date: string;
   project_name: string;
@@ -274,6 +285,118 @@ export async function POST(request: Request) {
     console.error("Create project failed:", error);
     return NextResponse.json(
       { error: "Unable to create project." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  if (!(await hasTeamAccess())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const body = (await request.json()) as UpdateProjectBody;
+
+    const id = body.id?.trim() ?? "";
+    const name = body.name?.trim() ?? "";
+    const description = body.description?.trim() || null;
+    const division = body.division ?? "operational";
+    const status = body.status ?? "active";
+    const leadMemberId = body.lead_member_id || null;
+    const targetDate = body.target_date || null;
+    const actorMemberId = body.actor_member_id || null;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Project id is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!actorMemberId) {
+      return NextResponse.json(
+        { error: "Select yourself under Working As before editing a project." },
+        { status: 400 }
+      );
+    }
+
+    if (name.length < 2 || name.length > 120) {
+      return NextResponse.json(
+        { error: "Project name must be between 2 and 120 characters." },
+        { status: 400 }
+      );
+    }
+
+    if (!allowedDivisions.has(division)) {
+      return NextResponse.json(
+        { error: "Invalid project division." },
+        { status: 400 }
+      );
+    }
+
+    if (!allowedStatuses.has(status)) {
+      return NextResponse.json(
+        { error: "Invalid project status." },
+        { status: 400 }
+      );
+    }
+
+    if (targetDate && !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
+      return NextResponse.json(
+        { error: "Target date must use YYYY-MM-DD format." },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createAdminClient();
+
+    const { data: actor, error: actorError } = await supabase
+      .from("team_members")
+      .select("id, active")
+      .eq("id", actorMemberId)
+      .maybeSingle();
+
+    if (actorError) {
+      throw actorError;
+    }
+
+    if (!actor || actor.active === false) {
+      return NextResponse.json(
+        { error: "Only an active team member can edit a project." },
+        { status: 403 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("projects")
+      .update({
+        name,
+        description,
+        division,
+        status,
+        lead_member_id: leadMemberId,
+        target_date: targetDate,
+      })
+      .eq("id", id)
+      .select(
+        "id, name, description, division, status, lead_member_id, target_date, created_at"
+      )
+      .single();
+
+    if (error) {
+      console.error("Unable to update project:", error);
+      return NextResponse.json(
+        { error: "Unable to update project." },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ project: data });
+  } catch (error) {
+    console.error("Update project failed:", error);
+    return NextResponse.json(
+      { error: "Unable to update project." },
       { status: 500 }
     );
   }

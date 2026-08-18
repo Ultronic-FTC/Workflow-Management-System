@@ -1,56 +1,51 @@
-# Ultronic Build 2J — Real Project Creation
+# Ultronic Build 2P — Edit Projects
 
-This fixes the Projects page itself.
+The Projects cards previously displayed data but were not editable.
 
-The reason the + New Project button was visible but did nothing is that the
-current `app/projects/page.tsx` is still the original static prototype. The
-button literally had no onClick handler.
+This build makes every project card clickable.
 
-This patch replaces that prototype with the real Supabase-backed Projects page.
+## What you can edit
 
-## What changes
+- Project Name
+- Description
+- Division: Technical / Operational / Both
+- Status: Planning / Active / Paused / Completed
+- Project Lead
+- Target Date
 
-- + New Project opens a real creation form
-- New projects are POSTed to the existing `/api/projects` endpoint
-- The Projects page now loads the real `projects` table instead of the eight
-  hard-coded sample projects
-- Real task counts, blocked counts, review counts, progress, project lead, and
-  target dates are displayed
-- Technical / Operational filters work
-- Project Lead uses the real Ultronic roster
+This works for BOTH:
+- current projects
+- historical projects imported from Hours Tracking
 
-No Supabase migration is required because the existing Projects API and table
-already support project creation.
+Editing a historical project's project record does NOT alter the underlying
+historical hours/activity records.
 
 ## INSTALL
 
 REPLACE:
+
 - `app/projects/page.tsx`
-
-NEW:
 - `app/projects/projects.module.css`
+- `app/api/projects/route.ts`
 
-Do not change `app/api/projects/route.ts`. Your existing API already supports
-both GET and POST.
+No Supabase migration.
+No new environment variables.
+
+## USE
+
+1. Select yourself under Working As.
+2. Open Projects.
+3. Click any project card.
+4. Edit Project opens.
+5. Make changes.
+6. Click Save Changes.
+
+The project card refreshes immediately after the save.
 
 ## COMMIT
 
 Suggested commit:
 
-`Connect Projects page to Supabase`
+`Add project editing`
 
 Commit to main -> Push origin -> wait for Vercel Ready -> hard refresh.
-
-## TEST
-
-1. Select yourself under Working As.
-2. Open Projects.
-3. Click + New Project.
-4. Create a harmless test project.
-5. It should appear immediately in the real project grid.
-6. It will also become available in the Project dropdown when creating/editing
-   tasks because both features use the same `projects` table.
-
-Important: once this patch is installed, the old fake cards such as Intake,
-Autonomous, Drive Practice, Website, etc. disappear unless those projects
-actually exist in Supabase.
