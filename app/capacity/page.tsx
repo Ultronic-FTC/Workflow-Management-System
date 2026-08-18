@@ -1,517 +1,340 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useCurrentUser } from "@/components/current-user-provider";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "./capacity.module.css";
 
-type CapacityTask = {
+type ForecastTask = {
   id: string;
   title: string;
   project_name: string;
-  status: string;
-  estimated_minutes: number | null;
   deadline: string | null;
+  status: string;
+  priority: string;
+  estimated_minutes: number | null;
+  assigned_count: number;
   is_lead: boolean;
-  planned_minutes: number;
+  overdue: boolean;
 };
 
-type CapacityMember = {
+type ForecastMember = {
   id: string;
   name: string;
   role: string;
   division: string;
   sort_order: number;
-  available_minutes: number;
-  planned_minutes: number;
-  remaining_minutes: number;
-  over_capacity: boolean;
-  workload_percent: number;
-  unplanned_task_count: number;
-  unestimated_task_count: number;
-  note: string | null;
-  tasks: CapacityTask[];
+  assignment_count: number;
+  estimated_minutes: number;
+  unestimated_count: number;
+  weeks: ForecastTask[][];
+  unscheduled: ForecastTask[];
 };
 
-type CapacitySummary = {
-  available_minutes: number;
-  planned_minutes: number;
-  remaining_minutes: number;
-  over_capacity_count: number;
-  unplanned_task_count: number;
+type ForecastSummary = {
+  unique_task_count: number;
+  assignment_count: number;
+  estimated_minutes: number;
   unestimated_task_count: number;
+  overdue_task_count: number;
+};
+
+type ForecastPayload = {
+  start_date: string;
+  end_date: string;
+  weeks: Array<{
+    start: string;
+    end: string;
+  }>;
+  summary: ForecastSummary;
+  members: ForecastMember[];
 };
 
 function mondayFor(date: Date) {
-  const value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const offset = (value.getDay() + 6) % 7;
-  value.setDate(value.getDate() - offset);
-  return value;
+  const copy = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    12,
+    0,
+    0
+  );
+  const offset = (copy.getDay() + 6) % 7;
+  copy.setDate(copy.getDate() - offset);
+  return copy;
 }
 
 function ymd(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
 }
 
-function moveWeek(weekStart: string, amount: number) {
-  const date = new Date(`${weekStart}T12:00:00`);
-  date.setDate(date.getDate() + amount * 7);
-  return ymd(date);
+function fromYmd(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0);
 }
 
-function formatWeek(weekStart: string) {
+function formatShort(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
-    year: "numeric",
-  }).format(new Date(`${weekStart}T12:00:00`));
+  }).format(fromYmd(value));
 }
 
-function hours(minutes: number) {
+function formatRange(start: string, end: string) {
+  return `${formatShort(start)} – ${formatShort(end)}`;
+}
+
+function formatLongRange(start: string, end: string) {
+  return `${new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(fromYmd(start))} – ${new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(fromYmd(end))}`;
+}
+
+function formatHours(minutes: number | null) {
+  if (minutes == null) return "No estimate";
+
   const value = minutes / 60;
   if (Number.isInteger(value)) {
     return `${value} hr${value === 1 ? "" : "s"}`;
   }
-  return `${value.toFixed(1)} hrs`;
-}
 
-function inputHours(minutes: number) {
-  if (minutes === 0) return "0";
-  const value = minutes / 60;
-  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-}
-
-function formatDeadline(value: string | null) {
-  if (!value) return "No deadline";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-  }).format(new Date(value));
+  return `${Number(value.toFixed(2))} hrs`;
 }
 
 function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export default function CapacityPage() {
-  const { currentUser } = useCurrentUser();
-  const [weekStart, setWeekStart] = useState(() => ymd(mondayFor(new Date())));
-  const [members, setMembers] = useState<CapacityMember[]>([]);
-  const [summary, setSummary] = useState<CapacitySummary>({
-    available_minutes: 0,
-    planned_minutes: 0,
-    remaining_minutes: 0,
-    over_capacity_count: 0,
-    unplanned_task_count: 0,
-    unestimated_task_count: 0,
-  });
+  const startDate = useMemo(() => ymd(mondayFor(new Date())), []);
+  const [data, setData] = useState<ForecastPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [error, setError] = useState("");
 
-  const [showModal, setShowModal] = useState(false);
-  const [availableHours, setAvailableHours] = useState("0");
-  const [note, setNote] = useState("");
-  const [planHours, setPlanHours] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState("");
-
-  const loadCapacity = useCallback(async () => {
+  const loadForecast = useCallback(async () => {
     setLoading(true);
-    setLoadError("");
+    setError("");
 
     try {
-      const response = await fetch(`/api/capacity?week_start=${weekStart}`, {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        `/api/capacity/forward?start_date=${startDate}`,
+        { cache: "no-store" }
+      );
+
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to load capacity.");
+        throw new Error(payload.error ?? "Unable to load capacity forecast.");
       }
 
-      setMembers(Array.isArray(payload.members) ? payload.members : []);
-      setSummary(payload.summary ?? {
-        available_minutes: 0,
-        planned_minutes: 0,
-        remaining_minutes: 0,
-        over_capacity_count: 0,
-        unplanned_task_count: 0,
-        unestimated_task_count: 0,
-      });
-    } catch (error) {
-      setLoadError(
-        error instanceof Error ? error.message : "Unable to load capacity."
+      setData(payload);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load capacity forecast."
       );
     } finally {
       setLoading(false);
     }
-  }, [weekStart]);
+  }, [startDate]);
 
   useEffect(() => {
-    loadCapacity();
-  }, [loadCapacity]);
-
-  const currentCapacity = useMemo(
-    () => members.find((member) => member.id === currentUser?.id) ?? null,
-    [members, currentUser]
-  );
-
-  const draftPlannedMinutes = useMemo(() => {
-    return Object.values(planHours).reduce((sum, value) => {
-      const parsed = Number.parseFloat(value);
-      return sum + (Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 60)) : 0);
-    }, 0);
-  }, [planHours]);
-
-  const draftAvailableMinutes = useMemo(() => {
-    const parsed = Number.parseFloat(availableHours);
-    return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed * 60)) : 0;
-  }, [availableHours]);
-
-  function openMyCapacity() {
-    if (!currentUser) return;
-
-    const row = currentCapacity;
-    setAvailableHours(inputHours(row?.available_minutes ?? 0));
-    setNote(row?.note ?? "");
-    setPlanHours(
-      Object.fromEntries(
-        (row?.tasks ?? []).map((task) => [
-          task.id,
-          inputHours(task.planned_minutes),
-        ])
-      )
-    );
-    setFormError("");
-    setShowModal(true);
-  }
-
-  async function saveCapacity(event: FormEvent) {
-    event.preventDefault();
-    if (!currentUser) return;
-
-    setSaving(true);
-    setFormError("");
-
-    try {
-      const available = Number.parseFloat(availableHours);
-      if (!Number.isFinite(available) || available < 0 || available > 168) {
-        throw new Error("Available hours must be between 0 and 168.");
-      }
-
-      const plans = (currentCapacity?.tasks ?? []).map((task) => {
-        const raw = Number.parseFloat(planHours[task.id] ?? "0");
-        if (!Number.isFinite(raw) || raw < 0 || raw > 168) {
-          throw new Error(`Enter valid planned hours for ${task.title}.`);
-        }
-        return {
-          task_id: task.id,
-          planned_minutes: Math.round(raw * 60),
-        };
-      });
-
-      const response = await fetch("/api/capacity", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          member_id: currentUser.id,
-          week_start: weekStart,
-          available_minutes: Math.round(available * 60),
-          note,
-          plans,
-        }),
-      });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to save capacity.");
-      }
-
-      setShowModal(false);
-      await loadCapacity();
-    } catch (error) {
-      setFormError(
-        error instanceof Error ? error.message : "Unable to save capacity."
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
+    loadForecast();
+  }, [loadForecast]);
 
   return (
     <>
       <div className="page-title-row">
         <div>
-          <p className="eyebrow">WEEKLY PLANNING</p>
+          <p className="eyebrow">3-WEEK FORWARD LOOK</p>
           <h1>Capacity</h1>
-          <p>Plan work against the time each team member can give this week.</p>
+          <p>
+            See what each person is assigned over the next three weeks and the
+            estimated time for every task.
+          </p>
         </div>
 
-        <div className={styles.weekControls}>
-          <button
-            type="button"
-            aria-label="Previous week"
-            onClick={() => setWeekStart((current) => moveWeek(current, -1))}
-          >
-            ‹
-          </button>
-          <button className={styles.weekLabel} type="button" disabled>
-            Week of {formatWeek(weekStart)}
-          </button>
-          <button
-            type="button"
-            aria-label="Next week"
-            onClick={() => setWeekStart((current) => moveWeek(current, 1))}
-          >
-            ›
-          </button>
-        </div>
+        {data && (
+          <div className={styles.rangeBadge}>
+            {formatLongRange(data.start_date, data.end_date)}
+          </div>
+        )}
       </div>
 
-      <div className="metrics-grid compact">
-        <div className="metric cyan">
-          <strong>{hours(summary.available_minutes)}</strong>
-          <span>Available</span>
-        </div>
-        <div className="metric">
-          <strong>{hours(summary.planned_minutes)}</strong>
-          <span>Planned</span>
-        </div>
-        <div className={`metric ${summary.remaining_minutes < 0 ? "red" : "cyan"}`}>
-          <strong>{hours(summary.remaining_minutes)}</strong>
-          <span>Remaining</span>
-        </div>
-        <div className={`metric ${summary.over_capacity_count > 0 ? "red" : ""}`}>
-          <strong>{summary.over_capacity_count}</strong>
-          <span>Over Capacity</span>
-        </div>
-      </div>
-
-      {(summary.unplanned_task_count > 0 || summary.unestimated_task_count > 0) && (
-        <div className={styles.notice}>
-          <strong>Planning gaps:</strong>{" "}
-          {summary.unplanned_task_count} assigned task
-          {summary.unplanned_task_count === 1 ? "" : "s"} still have no hours
-          planned for this week, and {summary.unestimated_task_count} assigned task
-          {summary.unestimated_task_count === 1 ? "" : "s"} have no total task estimate.
-        </div>
+      {loading && (
+        <div className={styles.message}>Loading 3-week workload…</div>
       )}
 
-      {loading && <div className={styles.loading}>Loading capacity…</div>}
-      {!loading && loadError && <div className={styles.error}>{loadError}</div>}
+      {!loading && error && (
+        <div className={`${styles.message} ${styles.error}`}>{error}</div>
+      )}
 
-      {!loading && !loadError && (
-        <section className={styles.panel}>
-          <div className={styles.panelHeading}>
-            <h2>Team Workload</h2>
-            <button
-              className={styles.updateButton}
-              disabled={!currentUser}
-              onClick={openMyCapacity}
-              title={!currentUser ? "Select yourself first" : undefined}
+      {!loading && data && (
+        <>
+          <section className={styles.summaryGrid}>
+            <div className={styles.summaryCard}>
+              <strong>{data.summary.unique_task_count}</strong>
+              <span>Tasks in Next 3 Weeks</span>
+            </div>
+
+            <div className={styles.summaryCard}>
+              <strong>{data.summary.assignment_count}</strong>
+              <span>Person / Task Assignments</span>
+            </div>
+
+            <div className={styles.summaryCard}>
+              <strong>{formatHours(data.summary.estimated_minutes)}</strong>
+              <span>Unique Task Estimates</span>
+            </div>
+
+            <div
+              className={`${styles.summaryCard} ${
+                data.summary.unestimated_task_count > 0
+                  ? styles.warningCard
+                  : ""
+              }`}
             >
-              Update My Capacity
-            </button>
-          </div>
-
-          <div className={styles.table}>
-            <div className={`${styles.row} ${styles.header}`}>
-              <span>Member</span>
-              <span>Available</span>
-              <span>Planned</span>
-              <span>Remaining</span>
-              <span>Unplanned</span>
-              <span>Workload</span>
+              <strong>{data.summary.unestimated_task_count}</strong>
+              <span>Tasks Missing Estimates</span>
             </div>
 
-            {members.map((member) => (
-              <div className={styles.row} key={member.id}>
-                <div className={styles.memberName}>
-                  <strong>{member.name}</strong>
-                  <span>{titleCase(member.role)}</span>
-                </div>
-                <span>{hours(member.available_minutes)}</span>
-                <span>{hours(member.planned_minutes)}</span>
-                <span className={member.over_capacity ? styles.danger : undefined}>
-                  {hours(member.remaining_minutes)}
-                </span>
-                <span>
-                  {member.unplanned_task_count > 0 ? (
-                    <span className={styles.unplanned}>
-                      {member.unplanned_task_count} task
-                      {member.unplanned_task_count === 1 ? "" : "s"}
-                    </span>
-                  ) : (
-                    <span className={styles.none}>—</span>
-                  )}
-                </span>
-                <div
-                  className={`${styles.workload} ${
-                    member.over_capacity ? styles.over : ""
-                  }`}
-                  title={`${member.workload_percent}% planned`}
-                >
-                  <i
-                    style={{
-                      width: `${Math.min(100, member.workload_percent)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {showModal && currentUser && (
-        <div
-          className={styles.overlay}
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target && !saving) {
-              setShowModal(false);
-            }
-          }}
-        >
-          <section
-            className={styles.modal}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="capacity-modal-title"
-          >
-            <div className={styles.modalHeader}>
-              <div>
-                <p className="eyebrow">MY WEEK</p>
-                <h2 id="capacity-modal-title">
-                  {currentUser.name} · Week of {formatWeek(weekStart)}
-                </h2>
-              </div>
-              <button
-                className={styles.close}
-                type="button"
-                onClick={() => setShowModal(false)}
-                disabled={saving}
-                aria-label="Close"
-              >
-                ×
-              </button>
+            <div
+              className={`${styles.summaryCard} ${
+                data.summary.overdue_task_count > 0
+                  ? styles.dangerCard
+                  : ""
+              }`}
+            >
+              <strong>{data.summary.overdue_task_count}</strong>
+              <span>Overdue Tasks</span>
             </div>
+          </section>
 
-            <form className={styles.form} onSubmit={saveCapacity}>
-              <div className={styles.capacityFields}>
-                <label>
-                  Hours I Can Give This Week
-                  <input
-                    type="number"
-                    min="0"
-                    max="168"
-                    step="0.25"
-                    required
-                    value={availableHours}
-                    onChange={(event) => setAvailableHours(event.target.value)}
-                  />
-                </label>
+          <div className={styles.explanation}>
+            <strong>How to read this:</strong> each task shows its full task
+            estimate. If multiple people are assigned to the same task, the
+            estimate appears for each person so everyone can see what they are
+            responsible for. The top-level estimated-hours total counts each
+            task only once.
+          </div>
 
-                <label>
-                  Note / Constraint
-                  <textarea
-                    maxLength={500}
-                    value={note}
-                    onChange={(event) => setNote(event.target.value)}
-                    placeholder="Optional: exams Tuesday, unavailable Saturday, etc."
-                  />
-                </label>
-              </div>
-
-              <div className={styles.planSummary}>
-                <div>
-                  <span>Available</span>
-                  <strong>{hours(draftAvailableMinutes)}</strong>
-                </div>
-                <div>
-                  <span>Planned</span>
-                  <strong>{hours(draftPlannedMinutes)}</strong>
-                </div>
-                <div>
-                  <span>Remaining</span>
-                  <strong
-                    className={
-                      draftAvailableMinutes - draftPlannedMinutes < 0
-                        ? styles.danger
-                        : undefined
-                    }
-                  >
-                    {hours(draftAvailableMinutes - draftPlannedMinutes)}
+          <section className={styles.forecast}>
+            <div className={styles.forecastHeader}>
+              <div>TEAM MEMBER</div>
+              {data.weeks.map((week, index) => (
+                <div key={week.start}>
+                  <strong>
+                    {index === 0 ? "THIS WEEK" : `WEEK ${index + 1}`}
                   </strong>
+                  <span>{formatRange(week.start, week.end)}</span>
                 </div>
-              </div>
+              ))}
+            </div>
 
-              <section className={styles.taskPlans}>
-                <h3>Plan My Assigned Tasks</h3>
-                <p className={styles.help}>
-                  Enter how many hours you expect to spend on each assigned task
-                  during this specific week. A task's total estimate can span
-                  multiple weeks and multiple people.
-                </p>
+            {data.members.map((member) => (
+              <article className={styles.memberRow} key={member.id}>
+                <header className={styles.member}>
+                  <div>
+                    <h2>{member.name}</h2>
+                    <span>
+                      {titleCase(member.role)} · {titleCase(member.division)}
+                    </span>
+                  </div>
 
-                {(currentCapacity?.tasks ?? []).length === 0 && (
-                  <p className={styles.help}>
-                    You currently have no active assigned tasks.
-                  </p>
-                )}
+                  <div className={styles.memberTotals}>
+                    <strong>{member.assignment_count}</strong>
+                    <span>
+                      assignment{member.assignment_count === 1 ? "" : "s"}
+                    </span>
+                    <b>{formatHours(member.estimated_minutes)}</b>
+                    <small>listed task estimates</small>
+                  </div>
+                </header>
 
-                {(currentCapacity?.tasks ?? []).map((task) => (
-                  <div className={styles.taskPlanRow} key={task.id}>
-                    <div className={styles.taskPlanInfo}>
-                      <strong>{task.title}</strong>
-                      <span>
-                        {task.project_name} · {formatDeadline(task.deadline)} · Total estimate: {task.estimated_minutes == null ? "Not set" : hours(task.estimated_minutes)}
-                      </span>
-                      {task.estimated_minutes == null && (
-                        <span className={styles.tag}>UNESTIMATED</span>
-                      )}
-                    </div>
+                {member.weeks.map((tasks, weekIndex) => (
+                  <div className={styles.weekCell} key={weekIndex}>
+                    {tasks.length === 0 ? (
+                      <span className={styles.empty}>No assigned tasks due</span>
+                    ) : (
+                      tasks.map((task) => (
+                        <div className={styles.taskCard} key={task.id}>
+                          <div className={styles.taskTop}>
+                            <span>{task.project_name}</span>
+                            {task.is_lead && <b>LEAD</b>}
+                          </div>
 
-                    <label>
-                      Hours This Week
-                      <input
-                        type="number"
-                        min="0"
-                        max="168"
-                        step="0.25"
-                        value={planHours[task.id] ?? "0"}
-                        onChange={(event) =>
-                          setPlanHours((current) => ({
-                            ...current,
-                            [task.id]: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
+                          <h3>{task.title}</h3>
+
+                          <div className={styles.taskMeta}>
+                            <strong>
+                              {task.estimated_minutes == null
+                                ? "NO ESTIMATE"
+                                : `EST. ${formatHours(task.estimated_minutes)}`}
+                            </strong>
+
+                            <span
+                              className={
+                                task.overdue ? styles.overdue : undefined
+                              }
+                            >
+                              {task.overdue ? "OVERDUE · " : ""}
+                              Due {task.deadline
+                                ? formatShort(task.deadline)
+                                : "No date"}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 ))}
-              </section>
 
-              {formError && <p className={styles.formMessage}>{formError}</p>}
+                {member.unscheduled.length > 0 && (
+                  <div className={styles.unscheduled}>
+                    <div className={styles.unscheduledLabel}>
+                      <strong>NO DEADLINE</strong>
+                      <span>
+                        {member.unscheduled.length} assigned task
+                        {member.unscheduled.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
 
-              <div className={styles.actions}>
-                <button
-                  className={styles.secondary}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => setShowModal(false)}
-                >
-                  Cancel
-                </button>
-                <button className={styles.submit} type="submit" disabled={saving}>
-                  {saving ? "Saving…" : "Save My Week"}
-                </button>
+                    <div className={styles.unscheduledTasks}>
+                      {member.unscheduled.map((task) => (
+                        <div className={styles.unscheduledTask} key={task.id}>
+                          <strong>{task.title}</strong>
+                          <span>
+                            {task.project_name} ·{" "}
+                            {task.estimated_minutes == null
+                              ? "No estimate"
+                              : `Est. ${formatHours(task.estimated_minutes)}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+
+            {data.members.length === 0 && (
+              <div className={styles.message}>
+                No active team members were found.
               </div>
-            </form>
+            )}
           </section>
-        </div>
+        </>
       )}
     </>
   );
