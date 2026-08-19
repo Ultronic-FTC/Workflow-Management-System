@@ -46,6 +46,7 @@ type TaskRow = {
   id: string;
   project_id: string;
   category_id: string;
+  deadline: string | null;
 };
 
 type TimeEntryRow = {
@@ -305,7 +306,7 @@ export async function GET(request: Request) {
       fetchAll((from, to) =>
         supabase
           .from("tasks")
-          .select("id, project_id, category_id")
+          .select("id, project_id, category_id, deadline")
           .range(from, to)
       ),
       fetchAll((from, to) =>
@@ -402,6 +403,20 @@ export async function GET(request: Request) {
     const technicalProjects = new Map<string, number[]>();
     const projectLabels = new Map<string, string>();
 
+    // Tracks whether an actual task/activity exists for a project in each
+    // month. Reports uses this to highlight likely impact-entry months.
+    const taskMonthsByProject = new Map<string, boolean[]>();
+
+    function markTaskMonth(projectId: string, monthIndex: number) {
+      if (monthIndex < 0 || monthIndex > 11) return;
+
+      const months =
+        taskMonthsByProject.get(projectId) ?? Array(12).fill(false);
+
+      months[monthIndex] = true;
+      taskMonthsByProject.set(projectId, months);
+    }
+
     const operationsActivities = Array.from(
       { length: 12 },
       () => new Set<string>()
@@ -433,6 +448,7 @@ export async function GET(request: Request) {
 
       if (canonicalProject) {
         projectLabels.set(canonicalProject.id, canonicalProject.name);
+        markTaskMonth(canonicalProject.id, parts.monthIndex);
       }
 
       if (division === "technical") {
@@ -507,6 +523,7 @@ export async function GET(request: Request) {
 
       if (project) {
         projectLabels.set(project.id, project.name);
+        markTaskMonth(project.id, parts.monthIndex);
       }
 
       if (division === "technical") {
@@ -547,6 +564,18 @@ export async function GET(request: Request) {
         operationsActivities[parts.monthIndex].add(
           `live|${parts.dateKey}|${entry.task_id}`
         );
+      }
+    }
+
+    for (const task of tasks) {
+      const project = projectById.get(task.project_id);
+      if (!project) continue;
+
+      const parts = dateParts(task.deadline);
+
+      if (parts && parts.year === year) {
+        projectLabels.set(project.id, project.name);
+        markTaskMonth(project.id, parts.monthIndex);
       }
     }
 
@@ -644,6 +673,8 @@ export async function GET(request: Request) {
           key,
           project_name: projectLabels.get(key) ?? key,
           months,
+          task_months:
+            taskMonthsByProject.get(key) ?? Array(12).fill(false),
           one_time: oneTime,
           total,
         };

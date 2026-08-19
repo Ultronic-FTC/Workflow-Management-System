@@ -29,6 +29,7 @@ type ReportsPayload = {
       key: string;
       project_name: string;
       months: number[];
+      task_months: boolean[];
       one_time: number;
       total: number;
     }>;
@@ -370,8 +371,11 @@ function ImpactMatrix({
 
       <div className={styles.impactHelp}>
         <strong>Only projects from your Projects tab appear here.</strong>{" "}
-        STEM Tent → enter each month's attendance. COASTWISE or RoboRumble →
-        enter the single program total under <strong>One-Time</strong>.
+        <span className={styles.greenKey}>Green cells</span> mean that project
+        has a task or recorded activity in that month, so that is a likely
+        month to enter impact. STEM Tent → enter each month's attendance.
+        COASTWISE or RoboRumble → enter the single program total under{" "}
+        <strong>One-Time</strong>.
       </div>
 
       {message && <div className={styles.impactMessage}>{message}</div>}
@@ -398,7 +402,19 @@ function ImpactMatrix({
                   const key = cellKey(row.key, index + 1);
 
                   return (
-                    <td key={index} className={styles.impactInputCell}>
+                    <td
+                      key={index}
+                      className={`${styles.impactInputCell} ${
+                        row.task_months[index]
+                          ? styles.hasProjectTask
+                          : ""
+                      }`}
+                      title={
+                        row.task_months[index]
+                          ? "This project has a task or recorded activity in this month."
+                          : undefined
+                      }
+                    >
                       <input
                         type="number"
                         min="0"

@@ -522,3 +522,35 @@ tfoot .stickyName {
   font-size: 8px;
   text-align: right;
 }
+
+
+/* ============================================================
+   BUILD 3D.4 — IMPACT MONTH TASK CUES
+   ============================================================ */
+
+.greenKey {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(77, 196, 119, .6);
+  border-radius: 4px;
+  background: rgba(77, 196, 119, .12);
+  color: #83dfa3;
+  padding: 1px 5px;
+  font-weight: 900;
+}
+
+.hasProjectTask {
+  background: rgba(55, 177, 95, .11) !important;
+  box-shadow: inset 0 0 0 1px rgba(73, 190, 111, .42);
+}
+
+.hasProjectTask input {
+  border-color: rgba(73, 190, 111, .52) !important;
+  background: rgba(33, 91, 52, .20) !important;
+}
+
+.hasProjectTask input:hover,
+.hasProjectTask input:focus {
+  border-color: #69d38d !important;
+  background: rgba(39, 111, 61, .28) !important;
+}
