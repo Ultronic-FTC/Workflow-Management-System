@@ -58,13 +58,6 @@ type CategoryOption = {
   sort_order: number;
 };
 
-type CapacitySummary = {
-  available_minutes: number;
-  planned_minutes: number;
-  remaining_minutes: number;
-  over_capacity_count: number;
-};
-
 const boardColumns: { status: TaskStatus; label: string }[] = [
   { status: "backlog", label: "Backlog" },
   { status: "needs_assignment", label: "Needs Assignment" },
@@ -105,27 +98,39 @@ function isOverdue(task: Task) {
   return new Date(task.deadline).getTime() < Date.now();
 }
 
+function isDueThisWeek(task: Task) {
+  if (!task.deadline || task.status === "completed") {
+    return false;
+  }
+
+  const now = new Date();
+  const todayStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    0,
+    0,
+    0,
+    0
+  );
+
+  const weekEnd = new Date(todayStart);
+  const daysUntilSunday = (7 - todayStart.getDay()) % 7;
+  weekEnd.setDate(weekEnd.getDate() + daysUntilSunday);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  const due = new Date(task.deadline).getTime();
+
+  // Overdue tasks already have their own metric, so Due This Week only
+  // counts work still due today through Sunday.
+  return due >= todayStart.getTime() && due <= weekEnd.getTime();
+}
+
 function titleCase(value: string) {
   return value
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function currentWeekStart() {
-  const date = new Date();
-  const value = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const offset = (value.getDay() + 6) % 7;
-  value.setDate(value.getDate() - offset);
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function capacityHours(minutes: number) {
-  const value = minutes / 60;
-  return Number.isInteger(value) ? `${value} hrs` : `${value.toFixed(1)} hrs`;
 }
 
 export default function TeamBoardPage() {
@@ -136,12 +141,6 @@ export default function TeamBoardPage() {
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [capacitySummary, setCapacitySummary] = useState<CapacitySummary>({
-    available_minutes: 0,
-    planned_minutes: 0,
-    remaining_minutes: 0,
-    over_capacity_count: 0,
-  });
   const [historicalCompletedCount, setHistoricalCompletedCount] = useState(0);
 
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -178,17 +177,12 @@ export default function TeamBoardPage() {
     setLoadError("");
 
     try {
-      const [taskResponse, capacityResponse, historyResponse] =
-        await Promise.all([
-          fetch("/api/tasks", { cache: "no-store" }),
-          fetch(`/api/capacity?week_start=${currentWeekStart()}`, {
-            cache: "no-store",
-          }),
-          fetch("/api/historical-work/summary", { cache: "no-store" }),
-        ]);
+      const [taskResponse, historyResponse] = await Promise.all([
+        fetch("/api/tasks", { cache: "no-store" }),
+        fetch("/api/historical-work/summary", { cache: "no-store" }),
+      ]);
 
       const taskPayload = await taskResponse.json();
-      const capacityPayload = await capacityResponse.json();
       const historyPayload = await historyResponse.json();
 
       if (!taskResponse.ok) {
@@ -198,15 +192,6 @@ export default function TeamBoardPage() {
       setTasks(Array.isArray(taskPayload.tasks) ? taskPayload.tasks : []);
       setProjects(Array.isArray(taskPayload.projects) ? taskPayload.projects : []);
       setCategories(Array.isArray(taskPayload.categories) ? taskPayload.categories : []);
-
-      if (capacityResponse.ok && capacityPayload.summary) {
-        setCapacitySummary({
-          available_minutes: capacityPayload.summary.available_minutes ?? 0,
-          planned_minutes: capacityPayload.summary.planned_minutes ?? 0,
-          remaining_minutes: capacityPayload.summary.remaining_minutes ?? 0,
-          over_capacity_count: capacityPayload.summary.over_capacity_count ?? 0,
-        });
-      }
 
       if (historyResponse.ok) {
         setHistoricalCompletedCount(
@@ -374,6 +359,7 @@ export default function TeamBoardPage() {
           task.status !== "completed" &&
           task.assigned_count < task.people_needed
       ).length,
+      dueThisWeek: tasks.filter(isDueThisWeek).length,
       completed:
         tasks.filter((task) => task.status === "completed").length +
         historicalCompletedCount,
@@ -444,21 +430,11 @@ export default function TeamBoardPage() {
         <Metric value={metrics.blocked} label="Blocked" tone="red" />
         <Metric value={metrics.needPeople} label="Need People" tone="yellow" />
         <Metric value={metrics.completed} label="Completed" tone="neutral" />
-        <div className="capacity-card">
-          <div>
-            <small>TEAM CAPACITY · THIS WEEK</small>
-            <strong>{capacityHours(capacitySummary.available_minutes)}</strong>
-            <span>available</span>
-          </div>
-          <div>
-            <strong>{capacityHours(capacitySummary.planned_minutes)}</strong>
-            <span>planned</span>
-          </div>
-          <div>
-            <strong>{capacityHours(capacitySummary.remaining_minutes)}</strong>
-            <span>remaining{capacitySummary.over_capacity_count > 0 ? ` · ${capacitySummary.over_capacity_count} over` : ""}</span>
-          </div>
-        </div>
+        <Metric
+          value={metrics.dueThisWeek}
+          label="Due This Week"
+          tone="yellow"
+        />
       </section>
 
       <section className="filterbar">
