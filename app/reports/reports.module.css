@@ -392,3 +392,133 @@ tfoot .stickyName {
     grid-template-columns: repeat(12, 48px);
   }
 }
+
+
+/* ============================================================
+   BUILD 3C — OPERATIONS PEOPLE IMPACT
+   ============================================================ */
+
+.summaryGrid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.impactHeader,
+.impactCell {
+  min-width: 112px !important;
+  font-weight: 950 !important;
+}
+
+.impactHeader {
+  color: #bba8ff !important;
+}
+
+.impactCell {
+  color: #bba8ff !important;
+}
+
+@media (max-width: 1350px) {
+  .summaryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 850px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 550px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ============================================================
+   BUILD 3D — MONTHLY / ONE-TIME IMPACT MATRIX
+   ============================================================ */
+
+.impactPanel {
+  border-top: 3px solid #bba8ff;
+}
+
+.impactPanel .panelHeading p {
+  color: #bba8ff;
+}
+
+.impactHelp {
+  border-bottom: 1px solid #293540;
+  background: #101720;
+  color: #99a6b4;
+  padding: 10px 18px;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.impactHelp strong {
+  color: #e8edf1;
+}
+
+.impactMessage {
+  border-bottom: 1px solid #6a343b;
+  background: #271319;
+  color: #ff9ca4;
+  padding: 9px 18px;
+  font-size: 9px;
+}
+
+.impactEditTable {
+  min-width: 1240px;
+}
+
+.impactInputCell {
+  min-width: 68px !important;
+  padding: 5px !important;
+}
+
+.impactInputCell input {
+  width: 100%;
+  min-width: 54px;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: #080e14;
+  color: #dfe6ed;
+  padding: 6px 7px;
+  font-size: 9px;
+  font-weight: 850;
+  text-align: right;
+}
+
+.impactInputCell input:hover {
+  border-color: #3b4857;
+}
+
+.impactInputCell input:focus {
+  border-color: #bba8ff;
+  outline: none;
+  background: #10131d;
+}
+
+.impactInputCell input:disabled {
+  opacity: .45;
+}
+
+.oneTimeHeader,
+.oneTimeCell {
+  background: rgba(187, 168, 255, .055) !important;
+}
+
+.oneTimeHeader {
+  min-width: 92px !important;
+  color: #bba8ff !important;
+}
+
+.autoSaveNote {
+  border-top: 1px solid #293540;
+  color: #718090;
+  padding: 8px 18px 11px;
+  font-size: 8px;
+  text-align: right;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useCurrentUser } from "@/components/current-user-provider";
 import styles from "./reports.module.css";
 
 type PivotRow = {
@@ -23,6 +24,15 @@ type ReportsPayload = {
   operations: {
     people: Pivot;
     projects: Pivot;
+    project_impact: Record<string, number>;
+    impact_matrix: Array<{
+      key: string;
+      project_name: string;
+      months: number[];
+      one_time: number;
+      total: number;
+    }>;
+    impact_total: number;
     activity_counts: number[];
     activity_total: number;
   };
@@ -57,6 +67,8 @@ function PivotTable({
   pivot,
   months,
   tone,
+  impactByKey,
+  impactTotal,
 }: {
   title: string;
   subtitle: string;
@@ -64,6 +76,8 @@ function PivotTable({
   pivot: Pivot;
   months: string[];
   tone: "operations" | "technical";
+  impactByKey?: Record<string, number>;
+  impactTotal?: number;
 }) {
   return (
     <section
@@ -93,6 +107,9 @@ function PivotTable({
                 <th key={month}>{month}</th>
               ))}
               <th className={styles.totalHeader}>Total Hours</th>
+              {impactByKey && (
+                <th className={styles.impactHeader}>People Impacted</th>
+              )}
             </tr>
           </thead>
 
@@ -104,6 +121,11 @@ function PivotTable({
                   <td key={index}>{hours(value)}</td>
                 ))}
                 <td className={styles.totalCell}>{hours(row.total)}</td>
+                {impactByKey && (
+                  <td className={styles.impactCell}>
+                    {impactByKey[row.key] ?? "—"}
+                  </td>
+                )}
               </tr>
             ))}
 
@@ -111,7 +133,7 @@ function PivotTable({
               <tr>
                 <td
                   className={styles.emptyRow}
-                  colSpan={months.length + 2}
+                  colSpan={months.length + 2 + (impactByKey ? 1 : 0)}
                 >
                   No hours have been recorded here yet.
                 </td>
@@ -128,6 +150,11 @@ function PivotTable({
               <td className={styles.totalCell}>
                 {hours(pivot.grand_total)}
               </td>
+              {impactByKey && (
+                <td className={styles.impactCell}>
+                  {new Intl.NumberFormat("en-US").format(impactTotal ?? 0)}
+                </td>
+              )}
             </tr>
           </tfoot>
         </table>
@@ -217,59 +244,299 @@ function ActivitiesPanel({
   );
 }
 
+function ImpactMatrix({
+  year,
+  months,
+  rows,
+  actorMemberId,
+  onSaved,
+}: {
+  year: number;
+  months: string[];
+  rows: ReportsPayload["operations"]["impact_matrix"];
+  actorMemberId: string;
+  onSaved: () => Promise<void>;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+
+  function cellKey(projectKey: string, month: number | null) {
+    return `${projectKey}|${month == null ? "one-time" : month}`;
+  }
+
+  function displayedValue(
+    projectKey: string,
+    month: number | null,
+    stored: number
+  ) {
+    const key = cellKey(projectKey, month);
+    if (key in drafts) return drafts[key];
+    return stored === 0 ? "" : String(stored);
+  }
+
+  async function saveCell(
+    projectKey: string,
+    projectName: string,
+    month: number | null,
+    stored: number
+  ) {
+    if (!actorMemberId) {
+      setMessage("Select yourself under Working As before editing impact.");
+      return;
+    }
+
+    const key = cellKey(projectKey, month);
+    const draft = (drafts[key] ?? (stored === 0 ? "" : String(stored))).trim();
+
+    if (draft === "" && stored === 0) {
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
+
+    const value = draft === "" ? null : Number(draft);
+
+    if (
+      value != null &&
+      (!Number.isInteger(value) || value < 0)
+    ) {
+      setMessage("People impacted must be a whole number of 0 or more.");
+      return;
+    }
+
+    if (value === stored) {
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
+
+    setSavingKey(key);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/reports/impact", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor_member_id: actorMemberId,
+          impact_year: year,
+          project_name: projectName,
+          impact_month: month,
+          people_impacted: value,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to save impact.");
+      }
+
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+
+      await onSaved();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Unable to save impact."
+      );
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  return (
+    <section className={`${styles.panel} ${styles.impactPanel}`}>
+      <div className={styles.panelHeading}>
+        <div>
+          <p>OPERATIONS</p>
+          <h2>People Impact by Project</h2>
+          <span>
+            Recurring programs use the monthly columns. One-time programs use
+            the One-Time column. Totals calculate automatically.
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.impactHelp}>
+        <strong>Example:</strong> STEM Tent → enter each month's attendance.
+        COASTWISE or RoboRumble → enter the single program total under
+        <strong> One-Time</strong>.
+      </div>
+
+      {message && <div className={styles.impactMessage}>{message}</div>}
+
+      <div className={styles.tableScroller}>
+        <table className={`${styles.pivotTable} ${styles.impactEditTable}`}>
+          <thead>
+            <tr>
+              <th className={styles.stickyName}>Project</th>
+              {months.map((month) => (
+                <th key={month}>{month}</th>
+              ))}
+              <th className={styles.oneTimeHeader}>One-Time</th>
+              <th className={styles.totalHeader}>Total Impact</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <th className={styles.stickyName}>{row.project_name}</th>
+
+                {row.months.map((stored, index) => {
+                  const key = cellKey(row.key, index + 1);
+
+                  return (
+                    <td key={index} className={styles.impactInputCell}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={displayedValue(row.key, index + 1, stored)}
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [key]: event.target.value,
+                          }))
+                        }
+                        onBlur={() =>
+                          saveCell(
+                            row.key,
+                            row.project_name,
+                            index + 1,
+                            stored
+                          )
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        disabled={savingKey === key}
+                        aria-label={`${row.project_name} ${months[index]} people impacted`}
+                        placeholder="—"
+                      />
+                    </td>
+                  );
+                })}
+
+                <td className={`${styles.impactInputCell} ${styles.oneTimeCell}`}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={displayedValue(
+                      row.key,
+                      null,
+                      row.one_time
+                    )}
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [cellKey(row.key, null)]: event.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      saveCell(
+                        row.key,
+                        row.project_name,
+                        null,
+                        row.one_time
+                      )
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    disabled={
+                      savingKey === cellKey(row.key, null)
+                    }
+                    aria-label={`${row.project_name} one-time people impacted`}
+                    placeholder="—"
+                  />
+                </td>
+
+                <td className={styles.impactCell}>
+                  {new Intl.NumberFormat("en-US").format(row.total)}
+                </td>
+              </tr>
+            ))}
+
+            {rows.length === 0 && (
+              <tr>
+                <td className={styles.emptyRow} colSpan={15}>
+                  No Operations projects are available yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className={styles.autoSaveNote}>
+        Values save automatically when you press Enter or click out of a cell.
+      </div>
+    </section>
+  );
+}
+
 export default function ReportsPage() {
+  const { currentUser } = useCurrentUser();
   const [data, setData] = useState<ReportsPayload | null>(null);
   const [year, setYear] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
+  async function loadReports() {
+    setLoading(true);
+    setError("");
 
-    async function load() {
-      setLoading(true);
-      setError("");
+    try {
+      const query = year ? `?year=${year}` : "";
+      const response = await fetch(`/api/reports${query}`, {
+        cache: "no-store",
+      });
 
-      try {
-        const query = year ? `?year=${year}` : "";
-        const response = await fetch(`/api/reports${query}`, {
-          cache: "no-store",
-        });
+      const contentType = response.headers.get("content-type") ?? "";
 
-        const contentType = response.headers.get("content-type") ?? "";
-
-        if (!contentType.includes("application/json")) {
-          throw new Error("The reports API is not responding correctly.");
-        }
-
-        const payload = await response.json();
-
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Unable to load reports.");
-        }
-
-        if (!cancelled) {
-          setData(payload);
-          setYear(payload.year);
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Unable to load reports."
-          );
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (!contentType.includes("application/json")) {
+        throw new Error("The reports API is not responding correctly.");
       }
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to load reports.");
+      }
+
+      setData(payload);
+      setYear(payload.year);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Unable to load reports."
+      );
+    } finally {
+      setLoading(false);
     }
+  }
 
-    load();
-
-    return () => {
-      cancelled = true;
-    };
+  useEffect(() => {
+    loadReports();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
 
   const operationsHours = useMemo(
@@ -341,6 +608,16 @@ export default function ReportsPage() {
             </div>
 
             <div className={styles.summaryCard}>
+              <span>People Impacted</span>
+              <strong>
+                {new Intl.NumberFormat("en-US").format(
+                  data.operations.impact_total
+                )}
+              </strong>
+              <small>Operations · {data.year}</small>
+            </div>
+
+            <div className={styles.summaryCard}>
               <span>Total Tracked Hours</span>
               <strong>
                 {totalHours(operationsHours + technicalHours)}
@@ -367,13 +644,23 @@ export default function ReportsPage() {
             tone="technical"
           />
 
+          <ImpactMatrix
+            year={data.year}
+            months={data.months}
+            rows={data.operations.impact_matrix}
+            actorMemberId={currentUser?.id ?? ""}
+            onSaved={loadReports}
+          />
+
           <PivotTable
             title="Hours by Project"
-            subtitle="Operations hours grouped by project."
+            subtitle="Operations hours grouped by project, with community impact."
             firstColumn="Project"
             pivot={data.operations.projects}
             months={data.months}
             tone="operations"
+            impactByKey={data.operations.project_impact}
+            impactTotal={data.operations.impact_total}
           />
 
           <PivotTable
