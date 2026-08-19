@@ -679,10 +679,8 @@ export async function GET(request: Request) {
           total,
         };
       })
-      .sort(
-        (a, b) =>
-          b.total - a.total ||
-          a.project_name.localeCompare(b.project_name)
+      .sort((a, b) =>
+        a.project_name.localeCompare(b.project_name)
       );
 
     return NextResponse.json(

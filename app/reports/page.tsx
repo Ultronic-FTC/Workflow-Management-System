@@ -515,8 +515,13 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function loadReports() {
-    setLoading(true);
+  async function loadReports(options?: { silent?: boolean }) {
+    const silent = options?.silent ?? false;
+
+    if (!silent) {
+      setLoading(true);
+    }
+
     setError("");
 
     try {
@@ -546,7 +551,9 @@ export default function ReportsPage() {
           : "Unable to load reports."
       );
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -665,7 +672,7 @@ export default function ReportsPage() {
             months={data.months}
             rows={data.operations.impact_matrix}
             actorMemberId={currentUser?.id ?? ""}
-            onSaved={loadReports}
+            onSaved={() => loadReports({ silent: true })}
           />
 
           <PivotTable
