@@ -327,7 +327,7 @@ function ImpactMatrix({
         body: JSON.stringify({
           actor_member_id: actorMemberId,
           impact_year: year,
-          project_name: projectName,
+          project_id: projectKey,
           impact_month: month,
           people_impacted: value,
         }),
@@ -369,9 +369,9 @@ function ImpactMatrix({
       </div>
 
       <div className={styles.impactHelp}>
-        <strong>Example:</strong> STEM Tent → enter each month's attendance.
-        COASTWISE or RoboRumble → enter the single program total under
-        <strong> One-Time</strong>.
+        <strong>Only projects from your Projects tab appear here.</strong>{" "}
+        STEM Tent → enter each month's attendance. COASTWISE or RoboRumble →
+        enter the single program total under <strong>One-Time</strong>.
       </div>
 
       {message && <div className={styles.impactMessage}>{message}</div>}

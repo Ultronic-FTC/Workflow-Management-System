@@ -69,6 +69,7 @@ type HistoricalRow = {
 
 type ImpactRow = {
   impact_year: number;
+  project_id: string | null;
   project_name: string;
   impact_month: number | null;
   people_impacted: number;
@@ -327,7 +328,7 @@ export async function GET(request: Request) {
         supabase
           .from("project_impact")
           .select(
-            "impact_year, project_name, impact_month, people_impacted"
+            "impact_year, project_id, project_name, impact_month, people_impacted"
           )
           .order("project_name", { ascending: true })
           .order("impact_month", { ascending: true, nullsFirst: false })
@@ -419,7 +420,9 @@ export async function GET(request: Request) {
       );
 
       const personKey = entry.member_id;
-      const projectKey = normalize(entry.project_name) || "unknown-project";
+      const canonicalProject = projectByName.get(
+        normalize(entry.project_name)
+      );
 
       if (!personLabels.has(personKey)) {
         personLabels.set(
@@ -428,7 +431,9 @@ export async function GET(request: Request) {
         );
       }
 
-      projectLabels.set(projectKey, entry.project_name || "Unknown Project");
+      if (canonicalProject) {
+        projectLabels.set(canonicalProject.id, canonicalProject.name);
+      }
 
       if (division === "technical") {
         addMinutes(
@@ -437,12 +442,15 @@ export async function GET(request: Request) {
           parts.monthIndex,
           entry.minutes
         );
-        addMinutes(
-          technicalProjects,
-          projectKey,
-          parts.monthIndex,
-          entry.minutes
-        );
+
+        if (canonicalProject) {
+          addMinutes(
+            technicalProjects,
+            canonicalProject.id,
+            parts.monthIndex,
+            entry.minutes
+          );
+        }
       } else {
         addMinutes(
           operationsPeople,
@@ -450,12 +458,15 @@ export async function GET(request: Request) {
           parts.monthIndex,
           entry.minutes
         );
-        addMinutes(
-          operationsProjects,
-          projectKey,
-          parts.monthIndex,
-          entry.minutes
-        );
+
+        if (canonicalProject) {
+          addMinutes(
+            operationsProjects,
+            canonicalProject.id,
+            parts.monthIndex,
+            entry.minutes
+          );
+        }
 
         const activityKey = [
           "historical",
@@ -486,8 +497,6 @@ export async function GET(request: Request) {
         category?.division === "technical" ? "technical" : "operational";
 
       const personKey = entry.member_id;
-      const projectName = project?.name ?? "Unknown Project";
-      const projectKey = normalize(projectName) || "unknown-project";
 
       if (!personLabels.has(personKey)) {
         personLabels.set(
@@ -496,7 +505,9 @@ export async function GET(request: Request) {
         );
       }
 
-      projectLabels.set(projectKey, projectName);
+      if (project) {
+        projectLabels.set(project.id, project.name);
+      }
 
       if (division === "technical") {
         addMinutes(
@@ -505,12 +516,15 @@ export async function GET(request: Request) {
           parts.monthIndex,
           entry.minutes
         );
-        addMinutes(
-          technicalProjects,
-          projectKey,
-          parts.monthIndex,
-          entry.minutes
-        );
+
+        if (project) {
+          addMinutes(
+            technicalProjects,
+            project.id,
+            parts.monthIndex,
+            entry.minutes
+          );
+        }
       } else {
         addMinutes(
           operationsPeople,
@@ -518,12 +532,15 @@ export async function GET(request: Request) {
           parts.monthIndex,
           entry.minutes
         );
-        addMinutes(
-          operationsProjects,
-          projectKey,
-          parts.monthIndex,
-          entry.minutes
-        );
+
+        if (project) {
+          addMinutes(
+            operationsProjects,
+            project.id,
+            parts.monthIndex,
+            entry.minutes
+          );
+        }
 
         // One task worked on one date counts as one activity,
         // regardless of how many students logged hours that day.
@@ -538,19 +555,23 @@ export async function GET(request: Request) {
     const impactOneTimeByProject = new Map<string, number>();
 
     for (const entry of impact) {
-      if (entry.impact_year !== year) continue;
+      if (entry.impact_year !== year || !entry.project_id) continue;
 
-      const projectKey =
-        normalize(entry.project_name) || "unknown-project";
-      const projectLabel = entry.project_name || "Unknown Project";
+      const project = projectById.get(entry.project_id);
+
+      // Never surface a legacy/free-text impact label as a project.
+      // Impact only counts when it maps to an actual project record.
+      if (!project) continue;
+
+      const projectKey = project.id;
       const people = Number(entry.people_impacted || 0);
+
+      projectLabels.set(projectKey, project.name);
 
       operationsProjectImpact.set(
         projectKey,
         (operationsProjectImpact.get(projectKey) ?? 0) + people
       );
-
-      projectLabels.set(projectKey, projectLabel);
 
       if (
         entry.impact_month != null &&
@@ -569,8 +590,7 @@ export async function GET(request: Request) {
         );
       }
 
-      // Impact-only projects/programs still appear in the Operations project
-      // pivot, even if they currently have no tracked hours.
+      // A real project with impact should appear even if it has no hours yet.
       if (!operationsProjects.has(projectKey)) {
         operationsProjects.set(projectKey, Array(12).fill(0));
       }

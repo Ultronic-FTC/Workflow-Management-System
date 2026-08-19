@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 type ImpactBody = {
   actor_member_id?: string;
   impact_year?: number;
-  project_name?: string;
+  project_id?: string;
   impact_month?: number | null;
   people_impacted?: number | null;
 };
@@ -29,7 +29,7 @@ export async function PATCH(request: Request) {
     const body = (await request.json()) as ImpactBody;
 
     const actorMemberId = body.actor_member_id?.trim() ?? "";
-    const projectName = body.project_name?.trim() ?? "";
+    const projectId = body.project_id?.trim() ?? "";
     const impactYear = Number(body.impact_year);
     const impactMonth = normalizeMonth(body.impact_month);
     const peopleImpacted =
@@ -42,7 +42,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    if (!projectName) {
+    if (!projectId) {
       return NextResponse.json(
         { error: "Project is required." },
         { status: 400 }
@@ -90,11 +90,33 @@ export async function PATCH(request: Request) {
       );
     }
 
+    const { data: project, error: projectError } = await supabase
+      .from("projects")
+      .select("id, name, division")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (projectError) throw projectError;
+
+    if (!project) {
+      return NextResponse.json(
+        { error: "That project no longer exists." },
+        { status: 404 }
+      );
+    }
+
+    if (!["operational", "both"].includes(project.division)) {
+      return NextResponse.json(
+        { error: "People impact can only be entered for Operations projects." },
+        { status: 400 }
+      );
+    }
+
     let existingQuery = supabase
       .from("project_impact")
       .select("id")
       .eq("impact_year", impactYear)
-      .ilike("project_name", projectName);
+      .eq("project_id", projectId);
 
     existingQuery =
       impactMonth == null
@@ -124,6 +146,7 @@ export async function PATCH(request: Request) {
       const { error: updateError } = await supabase
         .from("project_impact")
         .update({
+          project_name: project.name,
           people_impacted: peopleImpacted,
           updated_by_member_id: actorMemberId,
           updated_at: new Date().toISOString(),
@@ -136,7 +159,8 @@ export async function PATCH(request: Request) {
         .from("project_impact")
         .insert({
           impact_year: impactYear,
-          project_name: projectName,
+          project_id: project.id,
+          project_name: project.name,
           impact_month: impactMonth,
           people_impacted: peopleImpacted,
           updated_by_member_id: actorMemberId,
