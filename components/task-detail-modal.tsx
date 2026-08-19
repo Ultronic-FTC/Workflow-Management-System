@@ -498,6 +498,56 @@ export function TaskDetailModal({
     setEditTimeNote("");
   }
 
+  async function deleteTimeEntry() {
+    if (!currentUser) {
+      setMessage(
+        "Select yourself under Working As before deleting logged time."
+      );
+      return;
+    }
+
+    if (!editingTimeEntryId) return;
+
+    const confirmed = window.confirm(
+      "Delete this time entry? This will remove the hours from the task and from this person's total."
+    );
+
+    if (!confirmed) return;
+
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete_time_entry",
+          actor_member_id: currentUser.id,
+          time_entry_id: editingTimeEntryId,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Unable to delete logged time.");
+      }
+
+      cancelEditingTimeEntry();
+      await loadTask();
+      await onChanged();
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to delete logged time."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveTimeEntryEdit(event: FormEvent) {
     event.preventDefault();
 
@@ -1226,12 +1276,22 @@ export function TaskDetailModal({
                         <div className={styles.timeEditActions}>
                           <button
                             type="button"
+                            className={styles.timeDeleteButton}
+                            onClick={deleteTimeEntry}
+                            disabled={busy || !currentUser}
+                          >
+                            Delete Entry
+                          </button>
+
+                          <button
+                            type="button"
                             className={styles.actionSecondary}
                             onClick={cancelEditingTimeEntry}
                             disabled={busy}
                           >
                             Cancel
                           </button>
+
                           <button
                             className={styles.action}
                             disabled={busy || !currentUser}

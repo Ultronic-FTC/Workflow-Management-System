@@ -876,3 +876,31 @@
     grid-column: auto;
   }
 }
+
+
+/* ============================================================
+   BUILD 3E — DELETE LOGGED TIME
+   ============================================================ */
+
+.timeDeleteButton {
+  border: 1px solid #8a3741;
+  border-radius: 7px;
+  background: #2b1217;
+  color: #ff9aa3;
+  padding: 8px 11px;
+  font-size: 8px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.timeDeleteButton:hover:not(:disabled) {
+  border-color: #ff5362;
+  background: #3a151c;
+  color: #ffc0c5;
+}
+
+.timeDeleteButton:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}

@@ -792,6 +792,50 @@ export async function PATCH(request: Request, context: RouteContext) {
       await addActivity(supabase, id, actor.id, "deleted_subtask", {
         subtask_id: body.subtask_id,
       });
+    } else if (action === "delete_time_entry") {
+      const timeEntryId = body.time_entry_id?.trim() ?? "";
+
+      if (!timeEntryId) {
+        return NextResponse.json(
+          { error: "Time entry ID is required." },
+          { status: 400 }
+        );
+      }
+
+      const { data: existingEntry, error: existingEntryError } =
+        await supabase
+          .from("time_entries")
+          .select("id, member_id, work_date, minutes, note")
+          .eq("id", timeEntryId)
+          .eq("task_id", id)
+          .maybeSingle();
+
+      if (existingEntryError) throw existingEntryError;
+
+      if (!existingEntry) {
+        return NextResponse.json(
+          { error: "Logged-time entry not found." },
+          { status: 404 }
+        );
+      }
+
+      const { error: deleteError } = await supabase
+        .from("time_entries")
+        .delete()
+        .eq("id", timeEntryId)
+        .eq("task_id", id);
+
+      if (deleteError) throw deleteError;
+
+      await addActivity(supabase, id, actor.id, "deleted_time_entry", {
+        time_entry_id: timeEntryId,
+        deleted: {
+          member_id: existingEntry.member_id,
+          work_date: existingEntry.work_date,
+          minutes: existingEntry.minutes,
+          note: existingEntry.note,
+        },
+      });
     } else if (action === "update_time_entry") {
       const timeEntryId = body.time_entry_id?.trim() ?? "";
       const minutes = Number(body.minutes ?? 0);
