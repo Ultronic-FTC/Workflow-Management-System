@@ -110,11 +110,19 @@ const weekdays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 function dateKeyFromValue(value: string | null | undefined) {
   if (!value) return null;
 
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (match) {
-    return `${match[1]}-${match[2]}-${match[3]}`;
+  // Date-only values such as work_date should stay exactly on that
+  // calendar date.
+  if (!value.includes("T")) {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+    if (match) {
+      return `${match[1]}-${match[2]}-${match[3]}`;
+    }
   }
 
+  // Deadline timestamps are stored with a timezone. Use the LOCAL
+  // calendar date instead of the UTC date prefix. For example,
+  // Aug 22 at 11:59 PM Eastern is Aug 23 in UTC.
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
 
