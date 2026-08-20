@@ -156,7 +156,27 @@ function formatDate(value: string | null | undefined) {
 }
 
 function toDateInput(value: string | null | undefined) {
-  return value ? new Date(value).toISOString().slice(0, 10) : "";
+  if (!value) return "";
+
+  // Keep true date-only values exactly as entered.
+  const dateOnly = value.match(/^(\d{4}-\d{2}-\d{2})(?:$|T)/);
+
+  // If this is a timestamp, display its LOCAL calendar date rather than
+  // slicing the UTC ISO string. For example, an Aug 22 deadline saved as
+  // 11:59 PM Eastern becomes Aug 23 in UTC; using UTC made the input
+  // incorrectly jump forward one day when reopened.
+  if (value.includes("T")) {
+    const date = new Date(value);
+
+    if (!Number.isNaN(date.getTime())) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  return dateOnly?.[1] ?? value.slice(0, 10);
 }
 
 export function TaskDetailModal({
