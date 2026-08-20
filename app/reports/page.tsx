@@ -255,11 +255,6 @@ function PersonHoursDetailModal({
   const [detail, setDetail] = useState<PersonDetailPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [personDetail, setPersonDetail] = useState<{
-    memberId: string;
-    memberName: string;
-    division: "operational" | "technical";
-  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -796,6 +791,11 @@ export default function ReportsPage() {
   const [year, setYear] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [personDetail, setPersonDetail] = useState<{
+    memberId: string;
+    memberName: string;
+    division: "operational" | "technical";
+  } | null>(null);
 
   async function loadReports(options?: { silent?: boolean }) {
     const silent = options?.silent ?? false;
