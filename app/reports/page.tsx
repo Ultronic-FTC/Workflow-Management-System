@@ -43,6 +43,30 @@ type ReportsPayload = {
   };
 };
 
+type PersonDetailPayload = {
+  member: {
+    id: string;
+    name: string;
+  };
+  year: number;
+  division: "operational" | "technical";
+  months: string[];
+  month_minutes: number[];
+  total_minutes: number;
+  entry_count: number;
+  entries: Array<{
+    id: string;
+    date: string;
+    project: string;
+    task: string;
+    category: string;
+    hours_minutes: number;
+    note: string | null;
+    source: "Current Task" | "Historical";
+  }>;
+};
+
+
 function hours(minutes: number) {
   const value = minutes / 60;
 
@@ -61,6 +85,29 @@ function totalHours(minutes: number) {
   }).format(value);
 }
 
+function detailDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) return value;
+
+  const [, year, month, day] = match;
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(
+    new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      12,
+      0,
+      0
+    )
+  );
+}
+
 function PivotTable({
   title,
   subtitle,
@@ -70,6 +117,7 @@ function PivotTable({
   tone,
   impactByKey,
   impactTotal,
+  onPersonDetail,
 }: {
   title: string;
   subtitle: string;
@@ -79,6 +127,7 @@ function PivotTable({
   tone: "operations" | "technical";
   impactByKey?: Record<string, number>;
   impactTotal?: number;
+  onPersonDetail?: (row: PivotRow) => void;
 }) {
   return (
     <section
@@ -117,11 +166,37 @@ function PivotTable({
           <tbody>
             {pivot.rows.map((row) => (
               <tr key={row.key}>
-                <th className={styles.stickyName}>{row.label}</th>
+                <th className={styles.stickyName}>
+                  {onPersonDetail ? (
+                    <button
+                      type="button"
+                      className={styles.personDetailLink}
+                      onClick={() => onPersonDetail(row)}
+                      title={`View how ${row.label}'s hours are calculated`}
+                    >
+                      {row.label}
+                    </button>
+                  ) : (
+                    row.label
+                  )}
+                </th>
                 {row.months.map((value, index) => (
                   <td key={index}>{hours(value)}</td>
                 ))}
-                <td className={styles.totalCell}>{hours(row.total)}</td>
+                <td className={styles.totalCell}>
+                  {onPersonDetail ? (
+                    <button
+                      type="button"
+                      className={styles.personTotalLink}
+                      onClick={() => onPersonDetail(row)}
+                      title={`View ${row.label}'s detailed hours`}
+                    >
+                      {hours(row.total)}
+                    </button>
+                  ) : (
+                    hours(row.total)
+                  )}
+                </td>
                 {impactByKey && (
                   <td className={styles.impactCell}>
                     {impactByKey[row.key] ?? "—"}
@@ -161,6 +236,213 @@ function PivotTable({
         </table>
       </div>
     </section>
+  );
+}
+
+function PersonHoursDetailModal({
+  memberId,
+  memberName,
+  year,
+  division,
+  onClose,
+}: {
+  memberId: string;
+  memberName: string;
+  year: number;
+  division: "operational" | "technical";
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<PersonDetailPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [personDetail, setPersonDetail] = useState<{
+    memberId: string;
+    memberName: string;
+    division: "operational" | "technical";
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const params = new URLSearchParams({
+          member_id: memberId,
+          year: String(year),
+          division,
+        });
+
+        const response = await fetch(
+          `/api/reports/person-detail?${params.toString()}`,
+          { cache: "no-store" }
+        );
+
+        const contentType = response.headers.get("content-type") ?? "";
+
+        if (!contentType.includes("application/json")) {
+          throw new Error("The detailed-hours API is not responding correctly.");
+        }
+
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Unable to load detailed hours.");
+        }
+
+        if (!cancelled) {
+          setDetail(payload);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load detailed hours."
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [memberId, year, division]);
+
+  const divisionLabel =
+    division === "technical" ? "Technical" : "Operations";
+
+  return (
+    <div className={styles.detailOverlay} onMouseDown={onClose}>
+      <section
+        className={styles.detailModal}
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${memberName} detailed hours`}
+      >
+        <header className={styles.detailHeader}>
+          <div>
+            <p>{divisionLabel.toUpperCase()} · {year}</p>
+            <h2>{memberName} — Hours Detail</h2>
+            <span>
+              Use this view to verify every date and hour included in the
+              pivot-table total.
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className={styles.detailClose}
+            onClick={onClose}
+            aria-label="Close detailed hours"
+          >
+            ×
+          </button>
+        </header>
+
+        {loading && (
+          <div className={styles.detailMessage}>Loading detailed hours…</div>
+        )}
+
+        {!loading && error && (
+          <div className={`${styles.detailMessage} ${styles.detailError}`}>
+            {error}
+          </div>
+        )}
+
+        {!loading && detail && (
+          <>
+            <div className={styles.detailSummary}>
+              <div>
+                <span>Total Hours</span>
+                <strong>{hours(detail.total_minutes)}</strong>
+              </div>
+              <div>
+                <span>Entries</span>
+                <strong>{detail.entry_count}</strong>
+              </div>
+            </div>
+
+            <div className={styles.monthAuditGrid}>
+              {detail.months.map((month, index) => (
+                <div className={styles.monthAuditCell} key={month}>
+                  <span>{month}</span>
+                  <strong>{hours(detail.month_minutes[index])}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className={styles.detailTableScroller}>
+              <table className={styles.detailTable}>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Project</th>
+                    <th>Task / Activity</th>
+                    <th>Category</th>
+                    <th>Note</th>
+                    <th>Source</th>
+                    <th>Hours</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {detail.entries.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>{detailDate(entry.date)}</td>
+                      <td>{entry.project}</td>
+                      <td>{entry.task}</td>
+                      <td>{entry.category}</td>
+                      <td className={styles.detailNote}>
+                        {entry.note || "—"}
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            entry.source === "Current Task"
+                              ? styles.currentSource
+                              : styles.historicalSource
+                          }
+                        >
+                          {entry.source}
+                        </span>
+                      </td>
+                      <td className={styles.detailHours}>
+                        {hours(entry.hours_minutes)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {detail.entries.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className={styles.detailEmpty}>
+                        No hours were found for this person in this report.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+
+                <tfoot>
+                  <tr>
+                    <th colSpan={6}>Validated Total</th>
+                    <th className={styles.detailHours}>
+                      {hours(detail.total_minutes)}
+                    </th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -651,20 +933,34 @@ export default function ReportsPage() {
 
           <PivotTable
             title="Hours by Person"
-            subtitle="Monthly operations hours for each team member."
+            subtitle="Monthly operations hours for each team member. Click a name or Total Hours to audit the detail."
             firstColumn="Name"
             pivot={data.operations.people}
             months={data.months}
             tone="operations"
+            onPersonDetail={(row) =>
+              setPersonDetail({
+                memberId: row.key,
+                memberName: row.label,
+                division: "operational",
+              })
+            }
           />
 
           <PivotTable
             title="Hours by Person"
-            subtitle="Monthly technical hours for each team member."
+            subtitle="Monthly technical hours for each team member. Click a name or Total Hours to audit the detail."
             firstColumn="Name"
             pivot={data.technical.people}
             months={data.months}
             tone="technical"
+            onPersonDetail={(row) =>
+              setPersonDetail({
+                memberId: row.key,
+                memberName: row.label,
+                division: "technical",
+              })
+            }
           />
 
           <ImpactMatrix
@@ -701,6 +997,16 @@ export default function ReportsPage() {
             total={data.operations.activity_total}
           />
         </>
+      )}
+
+      {personDetail && data && (
+        <PersonHoursDetailModal
+          memberId={personDetail.memberId}
+          memberName={personDetail.memberName}
+          year={data.year}
+          division={personDetail.division}
+          onClose={() => setPersonDetail(null)}
+        />
       )}
     </>
   );
